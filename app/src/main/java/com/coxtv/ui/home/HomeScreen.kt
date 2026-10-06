@@ -52,6 +52,7 @@ import com.coxtv.data.Categories
 import com.coxtv.data.db.Channel
 import com.coxtv.data.db.ProgramEntity
 import com.coxtv.ui.components.Clock
+import com.coxtv.ui.components.CoxWordmark
 import com.coxtv.ui.components.collectAsStateCompat
 import com.coxtv.ui.components.FocusTile
 import com.coxtv.ui.components.LocalIsTouch
@@ -176,7 +177,7 @@ fun HomeScreen(
         // ---- Sidebar ----
         Column(Modifier.width(232.dp).fillMaxHeight()) {
             Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("CoxTV", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = CoxColors.Accent)
+                CoxWordmark(28.sp)
                 Spacer(Modifier.weight(1f))
                 Clock()
             }

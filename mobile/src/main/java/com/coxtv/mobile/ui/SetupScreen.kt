@@ -101,7 +101,7 @@ fun SetupScreen(container: AppContainer, canGoBack: Boolean, onBack: () -> Unit,
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("CoxTV", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold, color = CoxColors.Accent)
+                CoxWordmark(MaterialTheme.typography.headlineLarge)
                 Spacer(Modifier.weight(1f))
                 if (canGoBack) TextButton(onClick = onBack) { Text("Cancel") }
             }

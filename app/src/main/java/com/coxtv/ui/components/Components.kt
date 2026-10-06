@@ -15,6 +15,7 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -163,6 +164,20 @@ fun rememberTimeFormatter(): TimeFormatter {
 @Composable
 fun <T> kotlinx.coroutines.flow.Flow<T>.collectAsStateCompat(initial: T): State<T> =
     collectAsStateWithLifecycle(initial)
+
+/** The CoxTV wordmark: white "Cox", blue "TV" (same as the launcher and Roku artwork). */
+@Composable
+fun CoxWordmark(fontSize: androidx.compose.ui.unit.TextUnit, modifier: Modifier = Modifier) {
+    Text(
+        androidx.compose.ui.text.buildAnnotatedString {
+            withStyle(androidx.compose.ui.text.SpanStyle(color = Color.White)) { append("Cox") }
+            withStyle(androidx.compose.ui.text.SpanStyle(color = CoxColors.LogoBlue)) { append("TV") }
+        },
+        modifier = modifier,
+        fontSize = fontSize,
+        fontWeight = FontWeight.Bold,
+    )
+}
 
 @Composable
 fun Clock(modifier: Modifier = Modifier) {

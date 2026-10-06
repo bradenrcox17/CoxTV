@@ -33,6 +33,7 @@ import androidx.tv.material3.Text
 import com.coxtv.AppContainer
 import com.coxtv.data.SourceConfig
 import com.coxtv.ui.components.CoxButton
+import com.coxtv.ui.components.CoxWordmark
 import com.coxtv.ui.components.TvTextField
 import com.coxtv.ui.theme.CoxColors
 import kotlinx.coroutines.launch
@@ -98,7 +99,7 @@ fun LoginScreen(container: AppContainer, onConnected: () -> Unit) {
         Modifier.fillMaxSize().background(CoxColors.Bg).verticalScroll(rememberScrollState()).padding(horizontal = 56.dp, vertical = 32.dp),
     ) {
         Row(verticalAlignment = Alignment.Bottom) {
-            Text("CoxTV", fontSize = 40.sp, fontWeight = FontWeight.Bold, color = CoxColors.Accent)
+            CoxWordmark(40.sp)
             Spacer(Modifier.width(16.dp))
             Text("Connect your TV sources", style = MaterialTheme.typography.titleMedium, color = CoxColors.TextDim)
         }

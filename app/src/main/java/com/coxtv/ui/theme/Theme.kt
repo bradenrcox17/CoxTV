@@ -12,6 +12,7 @@ object CoxColors {
     val Panel = Color(0xFF141821)
     val PanelHi = Color(0xFF1F2532)
     val Accent = Color(0xFF2F80FF)
+    val LogoBlue = Color(0xFF4DA6FF)   // "TV" in the wordmark (matches the app icon art)
     val AccentDim = Color(0xFF1B3E73)
     val Text = Color(0xFFF2F4F8)
     val TextDim = Color(0xFF9AA3B2)

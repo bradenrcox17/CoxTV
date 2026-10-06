@@ -15,6 +15,7 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.SolidColor
@@ -86,6 +87,20 @@ fun CategoryChips(
             )
         }
     }
+}
+
+/** The CoxTV wordmark: white "Cox", blue "TV" (same as the launcher and Roku artwork). */
+@Composable
+fun CoxWordmark(style: androidx.compose.ui.text.TextStyle, modifier: Modifier = Modifier) {
+    androidx.compose.material3.Text(
+        androidx.compose.ui.text.buildAnnotatedString {
+            withStyle(androidx.compose.ui.text.SpanStyle(color = Color.White)) { append("Cox") }
+            withStyle(androidx.compose.ui.text.SpanStyle(color = com.coxtv.mobile.ui.theme.CoxColors.LogoBlue)) { append("TV") }
+        },
+        modifier = modifier,
+        style = style,
+        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+    )
 }
 
 /** Picture-in-picture icon (not part of the core Material icon set). */

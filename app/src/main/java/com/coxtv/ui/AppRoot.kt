@@ -18,6 +18,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Text
 import com.coxtv.AppContainer
+import com.coxtv.ui.components.CoxWordmark
 import com.coxtv.ui.guide.GuideScreen
 import com.coxtv.ui.home.HomeScreen
 import com.coxtv.ui.login.LoginScreen
@@ -78,7 +79,7 @@ fun AppRoot(container: AppContainer) {
         stateHolder.SaveableStateProvider(screen.key) {
             when (screen) {
                 Screen.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("CoxTV", fontSize = 48.sp, fontWeight = FontWeight.Bold)
+                    CoxWordmark(48.sp)
                 }
 
                 is Screen.Login -> LoginScreen(
