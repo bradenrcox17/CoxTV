@@ -28,7 +28,7 @@ sub serviceLoop()
             if m.refreshPlaylistDue then
                 m.refreshPlaylistDue = false
                 refreshPlaylist()
-            else if m.epgUrl <> "" and m.epgLoadedAt > 0 and nowSecs() - m.epgLoadedAt > 4 * 3600 then
+            else if m.epgUrl <> "" and m.epgLoadedAt > 0 and nowSecs() - m.epgLoadedAt > 4 * 3600 and streamSettled() then
                 loadEpg(m.epgUrl, true)
             end if
         else if type(msg) = "roSGNodeEvent" then
@@ -158,9 +158,39 @@ sub loadAll(req as object)
     m.epgUrl = epg
     if epg = "" then
         m.bus.epgState = "none"
-    else if not loadGuideCache(epg) then
+        return
+    end if
+    ' The guide is the heaviest work in the app (a big download plus parsing). When the app
+    ' reopens straight into the last channel, let that stream start and settle first.
+    m.bus.epgState = "loading"
+    expectPlayer = false
+    if type(req.resume) = "roBoolean" or type(req.resume) = "Boolean" then expectPlayer = req.resume
+    print "CoxTV: guide waits for playback to settle (resume="; expectPlayer; ")"
+    waitForStreamToSettle(45, expectPlayer)
+    print "CoxTV: guide work starts"
+    if not loadGuideCache(epg) then
         loadEpg(epg, false)
     end if
+end sub
+
+' True when nothing is playing, or the stream has been playing for a few seconds - i.e.
+' heavy guide work now won't hold up a channel that is starting.
+function streamSettled() as boolean
+    if not m.bus.playerOpen then return true
+    since = m.bus.playingSince
+    return since > 0 and nowSecs() - since >= 10
+end function
+
+' Answers UI requests until streamSettled(), for at most maxSecs. With expectPlayer (the app
+' is reopening into the last channel) it first gives the player a moment to open.
+sub waitForStreamToSettle(maxSecs as integer, expectPlayer as boolean)
+    t = CreateObject("roTimespan")
+    while expectPlayer and not m.bus.playerOpen and t.TotalSeconds() < 3
+        serveRequestsFor(100)
+    end while
+    while not streamSettled() and t.TotalSeconds() < maxSecs
+        serveRequestsFor(250)
+    end while
 end sub
 
 sub publishPlaylist()
@@ -341,12 +371,14 @@ sub saveChannelCache(url as string)
     end if
 end sub
 
-' Restores a parsed guide saved within the last 8 hours (the periodic refresh then
-' tops it up in the background). Returns false if there is none.
+' Restores the parsed guide saved by an earlier launch (up to a day old: an older guide
+' still fills in what it can right away). Anything older than 4 hours is then refreshed
+' in the background by the service loop, once playback has settled. Returns false if
+' there is none.
 function loadGuideCache(url as string) as boolean
     path = "cachefs:/guide.json"
     cachedAt = regRead("gCacheAt", "0").ToInt()
-    if regRead("gCacheUrl") <> url or nowSecs() - cachedAt > 8 * 3600 or not fileExists(path) then return false
+    if regRead("gCacheUrl") <> url or nowSecs() - cachedAt > 24 * 3600 or not fileExists(path) then return false
     m.bus.epgState = "loading"
     m.bus.status = "Loading guide..."
     data = ParseJson(ReadAsciiFile(path), "i")
@@ -472,6 +504,8 @@ function parseEpgFile(path as string) as object
         end if
         m.bus.status = "Loading guide... " + count.ToStr() + " programs"
         pumpRequests()
+        ' A channel is starting: pause parsing so it gets the CPU (resumes once it plays).
+        if not streamSettled() then waitForStreamToSettle(20, false)
     end while
     for each id in epg
         sortPrograms(epg[id])

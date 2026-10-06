@@ -61,6 +61,9 @@ sub init()
     m.category = "__all__"
     m.wantKey = ""
     m.clockTimer.control = "start"
+    ' Lets the data service hold heavy guide work until this stream has settled.
+    m.global.bus.playerOpen = true
+    m.global.bus.playingSince = 0
 end sub
 
 sub onParams()
@@ -90,6 +93,8 @@ end sub
 
 sub onClosed()
     m.global.bus.unobserveFieldScoped("epgVersion")
+    m.global.bus.playerOpen = false
+    m.global.bus.playingSince = 0
     m.video.control = "stop"
     m.infoTimer.control = "stop"
     m.zapTimer.control = "stop"
@@ -199,6 +204,13 @@ end sub
 
 sub onVideoState()
     state = m.video.state
+    ' playingSince restarts whenever the stream isn't playing (starting, zapping, stalling),
+    ' so the data service only does heavy guide work while playback is steady.
+    if state = "playing" then
+        if m.global.bus.playingSince = 0 then m.global.bus.playingSince = nowSecs()
+    else if state <> "paused" then
+        m.global.bus.playingSince = 0
+    end if
     if state = "playing" then
         m.stallTimer.control = "stop"
         m.loading.visible = false
