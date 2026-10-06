@@ -3,7 +3,9 @@
 # Developer Mode turned on. Remembers the Roku's IP address and developer password for next time
 # (the password is encrypted with Windows DPAPI, so only your Windows account can read it).
 #
-# Release builds wrap this script into CoxTV-Roku-Installer.bat so it can be double-clicked.
+# Release builds ship it two ways: in CoxTV-Roku-Installer-Windows.zip next to the double-click
+# "Install CoxTV on Roku.exe" launcher (installer\build-windows-installer.ps1), and wrapped into
+# the single-file CoxTV-Roku-Installer.bat.
 
 $ErrorActionPreference = 'Stop'
 $Repo = 'bradenrcox17/CoxTV'

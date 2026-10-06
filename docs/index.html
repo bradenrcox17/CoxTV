@@ -98,12 +98,13 @@
         </li>
         <li>
           <h3>Download the installer on your PC</h3>
-          <p><a class="btn" href="https://github.com/bradenrcox17/CoxTV/releases/latest/download/CoxTV-Roku-Installer.bat">Download the Roku installer</a></p>
+          <p><a class="btn" href="https://github.com/bradenrcox17/CoxTV/releases/latest/download/CoxTV-Roku-Installer-Windows.zip">Download the Roku installer for Windows</a></p>
+          <p>Open your <b>Downloads</b> folder, right-click <b>CoxTV-Roku-Installer-Windows.zip</b> and choose <b>Extract All&hellip;</b> &rarr; <b>Extract</b>. You get a <b>CoxTV Roku Installer</b> folder with the program, an <b>INSTRUCTIONS.txt</b> file, and a <b>files</b> folder the program needs.</p>
           <p class="small">If your browser warns about the file, choose <b>Keep</b>.</p>
         </li>
         <li>
           <h3>Run it</h3>
-          <p>Double-click <b>CoxTV-Roku-Installer.bat</b>. If Windows shows <i>"Windows protected your PC"</i>, click <b>More info</b> &rarr; <b>Run anyway</b>.</p>
+          <p>In the <b>CoxTV Roku Installer</b> folder, double-click <b>Install CoxTV on Roku</b>. If Windows shows <i>"Windows protected your PC"</i>, click <b>More info</b> &rarr; <b>Run anyway</b>.</p>
           <p>Type the Roku's <b>IP address</b> and the <b>developer password</b> from step 1. After a few seconds you'll see <b class="ok">SUCCESS</b>, and CoxTV opens on your TV. The installer remembers the IP and password for next time.</p>
           <figure class="shot">Screenshot: installer window showing SUCCESS <span>docs/images/roku-installer.png</span></figure>
         </li>
@@ -167,7 +168,7 @@
         </div>
         <div class="card">
           <h3>Roku</h3>
-          <p>Run <b>CoxTV-Roku-Installer.bat</b> again (download a fresh copy if you deleted it). Press <b>Enter</b> twice to reuse the saved IP and password.</p>
+          <p>Double-click <b>Install CoxTV on Roku</b> again (download a fresh copy if you deleted it). It always installs the newest version. Press <b>Enter</b> twice to reuse the saved IP and password.</p>
         </div>
       </div>
     </section>
@@ -217,7 +218,12 @@
       </details>
       <details>
         <summary>Windows won't run the Roku installer</summary>
-        <p>On the "Windows protected your PC" screen, click <b>More info</b> &rarr; <b>Run anyway</b>. If your browser blocked the download, choose <b>Keep</b> in its downloads list.</p>
+        <ul>
+          <li>On the "Windows protected your PC" screen, click <b>More info</b> &rarr; <b>Run anyway</b>. If your browser blocked the download, choose <b>Keep</b> in its downloads list.</li>
+          <li>If Windows says <i>Smart App Control blocked</i> it (or there's no <b>Run anyway</b>): right-click the downloaded <b>.zip</b> &rarr; <b>Properties</b> &rarr; tick <b>Unblock</b> &rarr; <b>OK</b>, then extract it again and use the new folder.</li>
+          <li>"The installer's 'files' folder wasn't found": you opened it from inside the .zip. Extract the .zip first (right-click &rarr; <b>Extract All&hellip;</b>).</li>
+          <li>Still stuck? The single-file <a href="https://github.com/bradenrcox17/CoxTV/releases/latest/download/CoxTV-Roku-Installer.bat">CoxTV-Roku-Installer.bat</a> does the same thing.</li>
+        </ul>
       </details>
       <details>
         <summary>Picture-in-picture doesn't work on my phone</summary>

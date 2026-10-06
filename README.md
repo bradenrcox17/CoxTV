@@ -8,9 +8,10 @@ with 20,000+ channel playlists.
 
 | Device | Download (always the newest release) |
 |---|---|
+| **Roku** (installer for Windows) | [**CoxTV-Roku-Installer-Windows.zip**](https://github.com/bradenrcox17/CoxTV/releases/latest/download/CoxTV-Roku-Installer-Windows.zip): extract it, double-click **Install CoxTV on Roku** (steps in `INSTRUCTIONS.txt`) |
 | Fire TV Stick / Android TV | [CoxTV.apk](https://github.com/bradenrcox17/CoxTV/releases/latest/download/CoxTV.apk) |
 | Android phone / tablet | [CoxTV-mobile.apk](https://github.com/bradenrcox17/CoxTV/releases/latest/download/CoxTV-mobile.apk) |
-| Roku (Windows installer) | [CoxTV-Roku-Installer.bat](https://github.com/bradenrcox17/CoxTV/releases/latest/download/CoxTV-Roku-Installer.bat) |
+| Roku (single-file installer) | [CoxTV-Roku-Installer.bat](https://github.com/bradenrcox17/CoxTV/releases/latest/download/CoxTV-Roku-Installer.bat) |
 | Roku (zip, for manual sideloading) | [CoxTV-roku.zip](https://github.com/bradenrcox17/CoxTV/releases/latest/download/CoxTV-roku.zip) |
 
 CoxTV doesn't include any channels; bring your own playlist from your TV service provider.
@@ -23,7 +24,7 @@ CoxTV doesn't include any channels; bring your own playlist from your TV service
 | `app/` | Fire TV app (`com.coxtv`), Compose for TV, D-pad first (also usable by touch) |
 | `mobile/` | Phone/tablet app (`com.coxtv.mobile`), Material 3, portrait + landscape, picture-in-picture |
 | `roku/` | Roku channel (BrightScript / SceneGraph), see [roku/README.md](roku/README.md) |
-| `installer/` | Windows Roku installer (`Install-CoxTV-Roku.ps1` + `.bat`) |
+| `installer/` | Windows Roku installer: `Install-CoxTV-Roku.ps1`, the `launcher/` .exe source, `INSTRUCTIONS.txt`, and `build-windows-installer.ps1` (packages the zip) |
 | `docs/` | Install page (GitHub Pages) |
 | `scripts/` | Release tooling |
 | `version.properties` | Version shared by both Android apps (the Roku manifest is kept in sync) |
@@ -53,8 +54,9 @@ Releases are built and signed on your own PC, so the signing key never leaves it
    powershell -ExecutionPolicy Bypass -File scripts\release.ps1 -Notes "What changed"
    ```
    This bumps the version in both Android apps and the Roku manifest, builds and signs both APKs,
-   packages the Roku zip and installer, then commits, tags and publishes a GitHub Release with
-   `CoxTV.apk`, `CoxTV-mobile.apk`, `CoxTV-roku.zip` and `CoxTV-Roku-Installer.bat`.
+   packages the Roku zip and installers, then commits, tags and publishes a GitHub Release with
+   `CoxTV-Roku-Installer-Windows.zip`, `CoxTV.apk`, `CoxTV-mobile.apk`, `CoxTV-roku.zip` and
+   `CoxTV-Roku-Installer.bat`, plus a "which file do I download?" table under your notes.
    Use `-Version 1.2.0` to choose the version, or `-BuildOnly` to build into `dist\` without publishing.
 
 The Fire TV and phone apps check `releases/latest` on launch (and from "Check for updates") and

@@ -182,7 +182,8 @@ class UpdateManager(
                 if (asset.optString("name") == app.apkAssetName) {
                     return@withContext Release(
                         version = json.optString("tag_name").removePrefix("v"),
-                        notes = json.optString("body").trim(),
+                        // The release page's "which file do I download" guide follows this marker.
+                        notes = json.optString("body").substringBefore("<!-- downloads -->").trim(),
                         apkUrl = asset.getString("browser_download_url"),
                         sizeBytes = asset.optLong("size", -1),
                     )

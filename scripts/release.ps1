@@ -13,12 +13,14 @@
     https://github.com/bradenrcox17/CoxTV/releases/latest/download/CoxTV.apk
     https://github.com/bradenrcox17/CoxTV/releases/latest/download/CoxTV-mobile.apk
     https://github.com/bradenrcox17/CoxTV/releases/latest/download/CoxTV-roku.zip
+    https://github.com/bradenrcox17/CoxTV/releases/latest/download/CoxTV-Roku-Installer-Windows.zip
     https://github.com/bradenrcox17/CoxTV/releases/latest/download/CoxTV-Roku-Installer.bat
 
 .PARAMETER Version
   New version, e.g. 1.2.0. Default: bump the last number (1.0.3 -> 1.0.4).
 .PARAMETER Notes
-  Release notes shown on GitHub and in the in-app update prompt. Default: GitHub's generated notes.
+  Release notes shown on GitHub and in the in-app update prompt. A "which file do I download"
+  guide is added below them on GitHub.
 .PARAMETER BuildOnly
   Build everything into dist\ without committing, tagging or publishing (version is still bumped
   locally; revert with: git checkout version.properties roku/manifest).
@@ -162,6 +164,7 @@ goto :eof
     $script = Get-Content (Join-Path $root 'installer\Install-CoxTV-Roku.ps1') -Raw
     $bat = ($header + "`r`n" + $script) -replace "(?<!`r)`n", "`r`n"
     [IO.File]::WriteAllText((Join-Path $dist 'CoxTV-Roku-Installer.bat'), $bat, (New-Object Text.UTF8Encoding $false))
+    & (Join-Path $root 'installer\build-windows-installer.ps1') -Out (Join-Path $dist 'CoxTV-Roku-Installer-Windows.zip')
 
     Get-ChildItem $dist | ForEach-Object { Write-Host ("  {0,-28} {1,8:N0} KB" -f $_.Name, ($_.Length / 1KB)) }
 } catch {
@@ -182,12 +185,32 @@ Run git @('tag', '-a', $tag, '-m', "CoxTV $tag")
 Run git @('push', 'origin', 'main')
 Run git @('push', 'origin', $tag)
 
-$assets = Get-ChildItem $dist | ForEach-Object { $_.FullName }
-$ghArgs = @('release', 'create', $tag) + $assets + @('--title', "CoxTV $Version")
-if ($Notes) { $ghArgs += @('--notes', $Notes) } else { $ghArgs += '--generate-notes' }
-Run gh $ghArgs
+# Release notes first (the apps show the text above the marker in their update prompt),
+# then a guide so people can tell which download is theirs.
+$base = 'https://github.com/bradenrcox17/CoxTV/releases/download/' + $tag
+$guide = @"
+<!-- downloads -->
+---
+### Which file do I download?
+| Device | Download |
+|---|---|
+| **Roku** (install from a Windows PC) | [**CoxTV-Roku-Installer-Windows.zip**]($base/CoxTV-Roku-Installer-Windows.zip) - extract it, then double-click **Install CoxTV on Roku** (see INSTRUCTIONS.txt inside) |
+| **Fire TV / Android TV** | [CoxTV.apk]($base/CoxTV.apk) |
+| **Android phone / tablet** | [CoxTV-mobile.apk]($base/CoxTV-mobile.apk) |
+
+<sub>Also here: CoxTV-roku.zip (Roku app package for manual install) and CoxTV-Roku-Installer.bat (single-file version of the Roku installer). Full guide: https://bradenrcox17.github.io/CoxTV/</sub>
+"@
+$notesFile = Join-Path $env:TEMP "coxtv-release-notes-$tag.md"
+$body = if ($Notes) { $Notes } else { "CoxTV $Version" }
+[IO.File]::WriteAllText($notesFile, $body + "`n`n" + $guide, (New-Object Text.UTF8Encoding $false))
+
+# Roku installer first so it heads the asset list.
+$order = 'CoxTV-Roku-Installer-Windows.zip', 'CoxTV.apk', 'CoxTV-mobile.apk', 'CoxTV-roku.zip', 'CoxTV-Roku-Installer.bat'
+$assets = $order | ForEach-Object { Join-Path $dist $_ }
+$ghArgs = @('release', 'create', $tag) + $assets + @('--title', "CoxTV $Version", '--notes-file', $notesFile)
+try { Run gh $ghArgs } finally { Remove-Item $notesFile -ErrorAction SilentlyContinue }
 
 Write-Host "`nReleased CoxTV $Version" -ForegroundColor Green
 Write-Host '  Fire TV : https://github.com/bradenrcox17/CoxTV/releases/latest/download/CoxTV.apk'
 Write-Host '  Phone   : https://github.com/bradenrcox17/CoxTV/releases/latest/download/CoxTV-mobile.apk'
-Write-Host '  Roku    : https://github.com/bradenrcox17/CoxTV/releases/latest/download/CoxTV-Roku-Installer.bat'
+Write-Host '  Roku    : https://github.com/bradenrcox17/CoxTV/releases/latest/download/CoxTV-Roku-Installer-Windows.zip'

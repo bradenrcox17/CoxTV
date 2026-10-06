@@ -1,0 +1,58 @@
+CoxTV for Roku - Windows installer
+==================================
+
+You need: a Windows 10 or 11 PC on the same Wi-Fi/network as your Roku.
+
+
+STEP 1 - Turn on Developer Mode on your Roku (one time only)
+------------------------------------------------------------
+ 1. On the Roku remote, press this sequence (nothing happens until the end):
+        Home Home Home   Up Up   Right Left Right Left Right
+ 2. A "Developer Settings" screen appears. WRITE DOWN the IP address it shows
+    (it looks like 192.168.1.50).
+ 3. Choose "Enable installer and restart" and agree to the license.
+ 4. Create a password and WRITE IT DOWN too. The Roku restarts.
+
+
+STEP 2 - Install CoxTV
+----------------------
+ 1. Double-click "Install CoxTV on Roku" in this folder.
+    If Windows shows "Windows protected your PC", click "More info",
+    then "Run anyway".
+ 2. Type your Roku's IP address and press Enter.
+ 3. Type the developer password from Step 1 and press Enter.
+ 4. Wait a few seconds for "SUCCESS". CoxTV opens on your TV.
+
+
+STEP 3 - First time in CoxTV
+----------------------------
+ Select "Playlist (M3U) URL", type the playlist link from your TV service,
+ then "Save and load channels". (Have an Xtream login instead? Choose
+ "Enter Xtream login instead".)
+ Tip: the free Roku app on your phone has a keyboard that makes typing long
+ links much easier.
+
+
+UPDATING
+--------
+ Run "Install CoxTV on Roku" again. It always installs the newest version and
+ remembers your Roku's IP address and password: just press Enter twice.
+
+
+TROUBLESHOOTING
+---------------
+ "The Roku rejected the developer password"
+     Run it again with the password from Step 1. Forgot it? Repeat the remote
+     sequence in Step 1 to set a new one.
+ "Could not reach a Roku"
+     Check the IP address (Roku: Settings > Network > About), make sure the PC
+     and Roku are on the same network, and that Developer Mode is on.
+ Windows blocks the program ("Smart App Control blocked..." or no "Run anyway")
+     Right-click the downloaded .zip > Properties > tick "Unblock" > OK, then
+     extract it again and use the new folder.
+ "The installer's 'files' folder wasn't found"
+     Extract the whole download first: right-click the .zip, "Extract All...".
+ Keep the "files" folder next to "Install CoxTV on Roku" - it holds the
+ installer itself.
+
+More help: https://bradenrcox17.github.io/CoxTV/#roku
