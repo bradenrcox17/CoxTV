@@ -3,6 +3,8 @@ sub init()
     m.status = m.top.findNode("status")
     m.menu.observeField("itemSelected", "onSelected")
     m.top.observeField("active", "onActive")
+    m.top.observeField("params", "onParams")
+    m.firstRun = true
     m.m3u = regRead("m3uUrl")
     m.epg = regRead("epgUrl")
     m.xtServer = regRead("xtServer")
@@ -13,6 +15,13 @@ sub init()
     m.pendingEdit = invalid
     m.nextTimer = m.top.findNode("nextTimer")
     m.nextTimer.observeField("fire", "openPendingEdit")
+    refreshMenu()
+end sub
+
+sub onParams()
+    p = m.top.params
+    m.firstRun = true
+    if p.firstRun <> invalid then m.firstRun = p.firstRun
     refreshMenu()
 end sub
 
@@ -27,6 +36,10 @@ sub refreshMenu()
         "Enter Xtream login instead (server, username, password)"
         "Save and load channels"
     ]
+    if not m.firstRun then
+        labels.Push("Categories:  choose which show in the sidebar, and their order")
+        labels.Push("Reorder favorites")
+    end if
     root = CreateObject("roSGNode", "ContentNode")
     for each label in labels
         root.CreateChild("ContentNode").title = label
@@ -53,6 +66,10 @@ sub onSelected()
         editField("xtServer", "Xtream server, e.g. example.com:80 (http:// is optional)", m.xtServer)
     else if i = 3 then
         save()
+    else if i = 4 then
+        m.top.navigate = { action: "push", screen: "OrganizeScreen", params: { mode: "categories" } }
+    else if i = 5 then
+        m.top.navigate = { action: "push", screen: "OrganizeScreen", params: { mode: "favorites" } }
     end if
 end sub
 

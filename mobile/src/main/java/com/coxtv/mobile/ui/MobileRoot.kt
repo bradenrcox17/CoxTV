@@ -45,6 +45,7 @@ private sealed interface Screen {
     data object Loading : Screen
     data class Setup(val canGoBack: Boolean) : Screen
     data object Main : Screen
+    data object Organize : Screen
     data class Player(val channelId: String, val category: String) : Screen
 }
 
@@ -110,9 +111,12 @@ fun MobileRoot(container: AppContainer, activity: MainActivity) {
                     Tab.Settings -> SettingsScreen(
                         container = container,
                         onEditSources = { push(Screen.Setup(canGoBack = true)) },
+                        onOrganize = { push(Screen.Organize) },
                     )
                 }
             }
+
+            Screen.Organize -> OrganizeScreen(container = container, onBack = ::pop)
 
             is Screen.Player -> PlayerScreen(
                 container = container,

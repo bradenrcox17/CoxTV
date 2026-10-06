@@ -5,13 +5,13 @@
   <children>
     <Label id="title" translation="[120,80]" text="CoxTV" font="font:LargeBoldSystemFont" color="0x2F80FFFF" />
     <Label id="subtitle" translation="[120,150]" text="Set up your channels" font="font:MediumSystemFont" color="0x9AA3B2FF" />
-    <Rectangle id="panel" translation="[100,240]" width="1720" height="520" color="0x141821FF" />
-    <LabelList id="menu" translation="[140,270]" itemSize="[1640,84]" itemSpacing="[0,12]" numRows="5"
+    <Rectangle id="panel" translation="[100,240]" width="1720" height="616" color="0x141821FF" />
+    <LabelList id="menu" translation="[140,270]" itemSize="[1640,84]" itemSpacing="[0,12]" numRows="6"
                color="0xF2F4F8FF" focusedColor="0xFFFFFFFF" focusBitmapBlendColor="0x2F80FFFF"
                font="font:MediumSystemFont" focusedFont="font:MediumBoldSystemFont" vertFocusAnimationStyle="floatingFocus" />
-    <Label id="help" translation="[120,790]" width="1680" wrap="true" font="font:SmallSystemFont" color="0x9AA3B2FF"
+    <Label id="help" translation="[120,880]" width="1680" wrap="true" font="font:SmallSystemFont" color="0x9AA3B2FF"
            text="Press OK on a line to edit it. Have an Xtream Codes login? Use Enter Xtream login - just the server, username and password; both URLs are filled in for you. Settings are saved on this Roku, so you only enter them once." />
     <Timer id="nextTimer" duration="0.3" repeat="false" />
-    <Label id="status" translation="[120,910]" width="1680" wrap="true" font="font:MediumSystemFont" color="0xFF6B6BFF" />
+    <Label id="status" translation="[120,990]" width="1680" wrap="true" font="font:MediumSystemFont" color="0xFF6B6BFF" />
   </children>
 </component>

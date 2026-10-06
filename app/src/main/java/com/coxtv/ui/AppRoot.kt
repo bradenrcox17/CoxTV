@@ -22,6 +22,7 @@ import com.coxtv.ui.components.CoxWordmark
 import com.coxtv.ui.guide.GuideScreen
 import com.coxtv.ui.home.HomeScreen
 import com.coxtv.ui.login.LoginScreen
+import com.coxtv.ui.organize.OrganizeScreen
 import com.coxtv.ui.player.PlayerScreen
 import com.coxtv.ui.search.SearchScreen
 import com.coxtv.ui.theme.CoxColors
@@ -36,6 +37,7 @@ sealed interface Screen {
     data object Home : Screen { override val key = "home" }
     data class Guide(val category: String) : Screen { override val key = "guide" }
     data object Search : Screen { override val key = "search" }
+    data object Organize : Screen { override val key = "organize" }
     data class Player(val channelId: String, val category: String) : Screen { override val key = "player" }
 }
 
@@ -96,9 +98,12 @@ fun AppRoot(container: AppContainer) {
                     onPlay = { id, category -> push(Screen.Player(id, category)) },
                     onOpenGuide = { category -> push(Screen.Guide(category)) },
                     onOpenSearch = { push(Screen.Search) },
+                    onOrganize = { push(Screen.Organize) },
                     onEditSources = { push(Screen.Login(canGoBack = true)) },
                     onCheckUpdates = { container.updates.check() },
                 )
+
+                Screen.Organize -> OrganizeScreen(container)
 
                 Screen.Search -> SearchScreen(
                     container = container,

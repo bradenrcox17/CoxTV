@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Row on the Categories / Reorder favorites screen: optional checkbox, name, right-hand text. -->
+<component name="OrganizeItem" extends="Group">
+  <interface>
+    <field id="itemContent" type="node" onChange="onContent" />
+    <field id="focusPercent" type="float" onChange="onFocus" />
+    <field id="listHasFocus" type="boolean" onChange="onFocus" />
+  </interface>
+  <script type="text/brightscript" uri="OrganizeItem.brs" />
+  <children>
+    <Rectangle id="bg" width="1600" height="80" color="0x2F80FFFF" opacity="0" />
+    <Rectangle id="moveBg" width="1600" height="80" color="0xE0A030FF" visible="false" />
+    <Group id="box">
+      <Rectangle translation="[24,22]" width="36" height="36" color="0x9AA3B2FF" />
+      <Rectangle translation="[27,25]" width="30" height="30" color="0x141821FF" />
+      <Rectangle id="tick" translation="[31,29]" width="22" height="22" color="0xFFFFFFFF" visible="false" />
+    </Group>
+    <Label id="name" translation="[84,0]" width="1150" height="80" vertAlign="center" font="font:MediumBoldSystemFont" color="0xF2F4F8FF" />
+    <Label id="right" translation="[1250,0]" width="320" height="80" vertAlign="center" horizAlign="right" font="font:SmallSystemFont" color="0x9AA3B2FF" />
+  </children>
+</component>

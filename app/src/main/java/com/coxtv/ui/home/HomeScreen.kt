@@ -70,6 +70,7 @@ fun HomeScreen(
     onPlay: (channelId: String, category: String) -> Unit,
     onOpenGuide: (category: String) -> Unit,
     onOpenSearch: () -> Unit,
+    onOrganize: () -> Unit,
     onEditSources: () -> Unit,
     onCheckUpdates: () -> Unit,
 ) {
@@ -80,7 +81,7 @@ fun HomeScreen(
     val now by rememberNow(30_000)
 
     val channels by repo.channels.collectAsStateCompat(null)
-    val groups by repo.groups.collectAsStateCompat(emptyList())
+    val shownCategories by repo.categories.collectAsStateCompat(null)
     val nowPlaying by repo.nowPlaying.collectAsStateCompat(emptyMap())
     val epgUpdating by remember { EpgRefreshWorker.isRunning(context) }.collectAsStateCompat(false)
     val lastEpg by container.settings.lastEpgRefresh.collectAsStateCompat(0L)
@@ -96,7 +97,7 @@ fun HomeScreen(
 
     val allChannels = channels.orEmpty()
     val category = selected ?: Categories.ALL
-    val categories = remember(groups) { listOf(Categories.FAVORITES, Categories.ALL) + groups }
+    val categories = shownCategories.orEmpty()
     val visible = remember(allChannels, category) { Categories.filter(allChannels, category) }
     val counts = remember(allChannels) {
         allChannels.groupingBy { it.groupName }.eachCount() +
@@ -112,16 +113,25 @@ fun HomeScreen(
     var initialFocusDone by remember { mutableStateOf(false) }
 
     // Default category on first load: last watched category, else Favorites if any, else All.
-    LaunchedEffect(channels != null) {
-        if (selected != null || channels == null) return@LaunchedEffect
+    LaunchedEffect(channels != null, shownCategories != null) {
+        if (selected != null || channels == null || shownCategories == null) return@LaunchedEffect
         val last = container.settings.lastWatched()?.category
+        val hasFavorites = allChannels.any { it.favorite }
         selected = when {
-            last != null && (last == Categories.ALL || last in groups ||
-                (last == Categories.FAVORITES && allChannels.any { it.favorite })) -> last
-            allChannels.any { it.favorite } -> Categories.FAVORITES
-            else -> Categories.ALL
+            last != null && last in categories && (last != Categories.FAVORITES || hasFavorites) -> last
+            hasFavorites && Categories.FAVORITES in categories -> Categories.FAVORITES
+            else -> categories.firstOrNull { it != Categories.FAVORITES } ?: categories.first()
         }
         anchorCategory = selected
+    }
+
+    // A category turned off in Categories & favorites: fall back to the first one still shown.
+    LaunchedEffect(categories) {
+        val current = selected ?: return@LaunchedEffect
+        if (categories.isNotEmpty() && current !in categories) {
+            selected = categories.first()
+            anchorCategory = selected
+        }
     }
 
     // Debounced "select on focus" for categories so scrolling the sidebar stays smooth.
@@ -194,6 +204,7 @@ fun HomeScreen(
                 }
                 item(key = "search") { SideItem("Search what's on", onFocused = cancelPending, onClick = onOpenSearch) }
                 item(key = "guide") { SideItem("TV Guide", onFocused = cancelPending, onClick = { onOpenGuide(category) }) }
+                item(key = "organize") { SideItem("Categories & favorites", onFocused = cancelPending, onClick = onOrganize) }
                 item(key = "refresh") { SideItem(if (refreshing) "Refreshing…" else "Refresh channels", onFocused = cancelPending, onClick = ::refreshChannels) }
                 item(key = "sources") { SideItem("Edit sources", onFocused = cancelPending, onClick = onEditSources) }
                 item(key = "updates") { SideItem("Check for updates", onFocused = cancelPending, onClick = onCheckUpdates) }

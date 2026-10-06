@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Refresh
@@ -33,7 +34,7 @@ import com.coxtv.work.EpgRefreshWorker
 import kotlinx.coroutines.launch
 
 @Composable
-fun SettingsScreen(container: AppContainer, onEditSources: () -> Unit) {
+fun SettingsScreen(container: AppContainer, onEditSources: () -> Unit, onOrganize: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val fmt = rememberTimeFormatter()
@@ -46,6 +47,12 @@ fun SettingsScreen(container: AppContainer, onEditSources: () -> Unit) {
         Text("Settings", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 8.dp))
 
         Item(Icons.Filled.Edit, "Edit sources", "Change your playlist (M3U), guide or Xtream login", onEditSources)
+        Item(
+            Icons.AutoMirrored.Filled.List,
+            "Categories & favorites",
+            "Choose which categories show, their order, and the order of your favorites",
+            onOrganize,
+        )
         Item(
             Icons.Filled.Refresh,
             if (refreshing) "Refreshing channels…" else "Refresh channels",

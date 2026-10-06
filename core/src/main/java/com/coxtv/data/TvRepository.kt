@@ -19,6 +19,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
@@ -54,10 +56,22 @@ object Categories {
     }
 
     fun filter(channels: List<Channel>, key: String): List<Channel> = when (key) {
-        FAVORITES -> channels.filter { it.favorite }
+        FAVORITES -> channels.filter { it.favorite }.sortedWith(compareBy({ it.favoritePosition }, { it.sortOrder }))
         ALL, "" -> channels
         else -> channels.filter { it.groupName == key }
     }
+
+    fun isBuiltIn(key: String) = key == FAVORITES || key == ALL
+}
+
+/** A category on the Categories & favorites screen. */
+data class CategoryOption(val key: String, val enabled: Boolean)
+
+/** Moves the item at [from] by [delta] places (clamped). Returns null if nothing moved. */
+fun <T> List<T>.moved(from: Int, delta: Int): List<T>? {
+    val to = (from + delta).coerceIn(0, lastIndex)
+    if (from !in indices || to == from) return null
+    return toMutableList().apply { add(to, removeAt(from)) }
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -69,6 +83,46 @@ class TvRepository(
 ) {
     val channels: Flow<List<Channel>> = db.channels().observeAll()
     val groups: Flow<List<String>> = db.channels().observeGroups()
+
+    /** Categories to show (sidebar / chips), in the user's order: only enabled ones that exist. */
+    val categories: Flow<List<String>> = combine(settings.categoryOrder, groups) { order, groups ->
+        val present = groups.toHashSet()
+        order.filter { Categories.isBuiltIn(it) || it in present }.ifEmpty { listOf(Categories.ALL) }
+    }
+
+    /** Every category for the settings screen: enabled ones in order, then the rest in playlist order. */
+    val categoryOptions: Flow<List<CategoryOption>> = combine(settings.categoryOrder, groups) { order, groups ->
+        val present = groups.toHashSet()
+        val enabled = order.filter { Categories.isBuiltIn(it) || it in present }
+        val enabledSet = enabled.toHashSet()
+        enabled.map { CategoryOption(it, true) } +
+            (listOf(Categories.FAVORITES, Categories.ALL) + groups)
+                .filter { it !in enabledSet }
+                .map { CategoryOption(it, false) }
+    }
+
+    private val categoryMutex = Mutex()
+
+    /** Turns a category on (added at the end) or off. The last enabled category can't be turned off. */
+    suspend fun setCategoryEnabled(key: String, enabled: Boolean) = categoryMutex.withLock {
+        val order = settings.categoryOrder.first()
+        val present = groups.first().toHashSet()
+        val visible = order.filter { Categories.isBuiltIn(it) || it in present }
+        when {
+            enabled && key !in order -> settings.setCategoryOrder(order + key)
+            !enabled && key in order && (visible - key).isNotEmpty() -> settings.setCategoryOrder(order - key)
+        }
+    }
+
+    /** Moves an enabled category up (delta < 0) or down among the categories shown. */
+    suspend fun moveCategory(key: String, delta: Int) = categoryMutex.withLock {
+        val order = settings.categoryOrder.first()
+        val present = groups.first().toHashSet()
+        val visible = order.filter { Categories.isBuiltIn(it) || it in present }
+        val moved = visible.moved(visible.indexOf(key), delta) ?: return@withLock
+        // Groups missing from the current playlist keep their place at the end, in case they return.
+        settings.setCategoryOrder(moved + order.filter { it !in visible })
+    }
 
     /** Program airing right now, keyed by EPG id; re-evaluated every minute. */
     val nowPlaying: Flow<Map<String, ProgramEntity>> = minuteTicker()
@@ -165,8 +219,29 @@ class TvRepository(
     suspend fun programCount(): Int = db.programs().count()
 
     suspend fun toggleFavorite(channel: Channel) {
-        if (channel.favorite) db.channels().removeFavorite(channel.id)
-        else db.channels().addFavorite(FavoriteEntity(channel.id, System.currentTimeMillis()))
+        if (channel.favorite) {
+            db.channels().removeFavorite(channel.id)
+        } else {
+            val dao = db.channels()
+            dao.addFavorite(FavoriteEntity(channel.id, System.currentTimeMillis(), dao.nextFavoritePosition()))
+        }
+    }
+
+    suspend fun removeFavorite(channelId: String) = db.channels().removeFavorite(channelId)
+
+    /**
+     * Moves a favorite up (delta < 0) or down past its visible neighbours. Favorites the current
+     * playlist doesn't have stay in the list (they come back if the channel does) but are skipped.
+     */
+    suspend fun moveFavorite(channelId: String, delta: Int) = categoryMutex.withLock {
+        val dao = db.channels()
+        val all = dao.favoriteIds()
+        val present = channels.first().mapNotNullTo(HashSet()) { if (it.favorite) it.id else null }
+        val visible = all.filter { it in present }
+        val moved = visible.moved(visible.indexOf(channelId), delta) ?: return@withLock
+        // Put the reordered visible favorites back into the slots visible favorites occupied.
+        val queue = ArrayDeque(moved)
+        dao.reorderFavorites(all.map { if (it in present) queue.removeFirst() else it })
     }
 
     /** Validates the sources by loading their channel lists, then saves the config. */

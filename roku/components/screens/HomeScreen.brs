@@ -49,7 +49,12 @@ sub onActive()
     if not m.top.active then return
     m.lastFocus.setFocus(true)
     buildSide()
-    if m.current = "__fav__" then
+    if m.current <> invalid and not hasGroup(m.current) then
+        ' Turned off in Settings while we were away.
+        m.lastFocus = m.side
+        m.side.setFocus(true)
+        loadCategory(firstCategory())
+    else if m.current = "__fav__" then
         loadCategory("__fav__")
     else
         refreshNow()
@@ -72,16 +77,32 @@ sub updateClock()
 end sub
 
 sub buildSide()
-    keys = ["#search", "#guide", "#settings", "__fav__", "__all__"]
+    keys = ["#search", "#guide", "#settings"]
     labels = ["Search what's on", "TV Guide", "Settings"]
-    labels.Push("Favorites  (" + favKeys().Count().ToStr() + ")")
-    labels.Push("All Channels  (" + m.global.bus.channelCount.ToStr() + ")")
+    counts = {}
+    counts.SetModeCaseSensitive()
     cats = m.global.bus.categories
     if cats <> invalid then
         for each c in cats
-            keys.Push(c.name)
-            labels.Push(c.name + "  (" + c.count.ToStr() + ")")
+            counts[c.name] = c.count
         end for
+    end if
+    ' Only the categories turned on in Settings, in the user's order.
+    for each k in categoryOrder()
+        if k = "__fav__" then
+            keys.Push(k)
+            labels.Push("Favorites  (" + favKeys().Count().ToStr() + ")")
+        else if k = "__all__" then
+            keys.Push(k)
+            labels.Push("All Channels  (" + m.global.bus.channelCount.ToStr() + ")")
+        else if counts.DoesExist(k) then
+            keys.Push(k)
+            labels.Push(k + "  (" + counts[k].ToStr() + ")")
+        end if
+    end for
+    if keys.Count() = 3 then
+        keys.Push("__all__")
+        labels.Push("All Channels  (" + m.global.bus.channelCount.ToStr() + ")")
     end if
     root = CreateObject("roSGNode", "ContentNode")
     for each label in labels
@@ -119,12 +140,13 @@ sub onState()
         if m.current = invalid then
             ' First load: last category watched, else Favorites if any, else All.
             last = regRead("lastCategory")
-            if last <> "" and (last = "__all__" or (last = "__fav__" and favKeys().Count() > 0) or hasGroup(last)) then
+            hasFavs = favKeys().Count() > 0
+            if last <> "" and hasGroup(last) and (last <> "__fav__" or hasFavs) then
                 start = last
-            else if favKeys().Count() > 0 then
+            else if hasFavs and hasGroup("__fav__") then
                 start = "__fav__"
             else
-                start = "__all__"
+                start = firstCategory()
             end if
             m.focusKey = regRead("lastKey")
             m.focusListAfterLoad = true
@@ -143,6 +165,19 @@ function hasGroup(name as string) as boolean
         if k = name then return true
     end for
     return false
+end function
+
+' First category in the sidebar, preferring one that isn't Favorites.
+function firstCategory() as string
+    first = ""
+    for each k in m.sideKeys
+        if Left(k, 1) <> "#" then
+            if k <> "__fav__" then return k
+            if first = "" then first = k
+        end if
+    end for
+    if first = "" then first = "__all__"
+    return first
 end function
 
 sub showEmpty(text as string)

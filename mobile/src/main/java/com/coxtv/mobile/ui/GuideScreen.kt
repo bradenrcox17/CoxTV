@@ -66,7 +66,7 @@ fun GuideScreen(
     val fmt = rememberTimeFormatter()
     val now by rememberNow(30_000)
     val channels by repo.channels.collectAsStateWithLifecycle(null)
-    val groups by repo.groups.collectAsStateWithLifecycle(emptyList())
+    val cats by repo.categories.collectAsStateWithLifecycle(emptyList())
     val guideVersion by container.settings.lastEpgRefresh.collectAsStateWithLifecycle(0L)
     val all = channels.orEmpty()
     val list = remember(all, category) { Categories.filter(all, category) }
@@ -114,7 +114,7 @@ fun GuideScreen(
             style = MaterialTheme.typography.headlineSmall,
             modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 4.dp),
         )
-        CategoryChips(groups, category, counts, onCategory)
+        CategoryChips(cats, category, counts, onCategory)
         Spacer(Modifier.height(6.dp))
 
         BoxWithConstraints(Modifier.fillMaxSize()) {

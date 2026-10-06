@@ -56,22 +56,27 @@ fun ChannelsScreen(
     val scope = rememberCoroutineScope()
     val now by rememberNow()
     val channels by repo.channels.collectAsStateWithLifecycle(null)
-    val groups by repo.groups.collectAsStateWithLifecycle(emptyList())
+    val shown by repo.categories.collectAsStateWithLifecycle(null)
+    val cats = shown.orEmpty()
     val nowPlaying by repo.nowPlaying.collectAsStateWithLifecycle(emptyMap())
     val all = channels.orEmpty()
 
     // First visit: last watched category, else Favorites if there are any, else All.
-    LaunchedEffect(channels != null) {
-        if (category != null || channels == null) return@LaunchedEffect
+    LaunchedEffect(channels != null, shown != null) {
+        if (category != null || channels == null || shown == null) return@LaunchedEffect
         val last = container.settings.lastWatched()?.category
+        val hasFavorites = all.any { it.favorite }
         onCategory(
             when {
-                last != null && (last == Categories.ALL || last in groups ||
-                    (last == Categories.FAVORITES && all.any { it.favorite })) -> last
-                all.any { it.favorite } -> Categories.FAVORITES
-                else -> Categories.ALL
+                last != null && last in cats && (last != Categories.FAVORITES || hasFavorites) -> last
+                hasFavorites && Categories.FAVORITES in cats -> Categories.FAVORITES
+                else -> cats.firstOrNull { it != Categories.FAVORITES } ?: cats.first()
             },
         )
+    }
+    // A category turned off in Categories & favorites: fall back to the first one still shown.
+    LaunchedEffect(cats) {
+        if (category != null && cats.isNotEmpty() && category !in cats) onCategory(cats.first())
     }
 
     val cat = category ?: Categories.ALL
@@ -89,7 +94,7 @@ fun ChannelsScreen(
             Spacer(Modifier.width(10.dp))
             Text("${visible.size} channels", style = MaterialTheme.typography.bodyMedium, color = CoxColors.TextDim)
         }
-        CategoryChips(groups, cat, counts, onCategory)
+        CategoryChips(cats, cat, counts, onCategory)
         Spacer(Modifier.height(6.dp))
 
         when {

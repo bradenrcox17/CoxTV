@@ -8,7 +8,7 @@ import androidx.room.Transaction
 import kotlinx.coroutines.flow.Flow
 
 private const val CHANNEL_SELECT =
-    "SELECT c.*, (f.channelId IS NOT NULL) AS favorite FROM channels c " +
+    "SELECT c.*, (f.channelId IS NOT NULL) AS favorite, f.position AS favoritePosition FROM channels c " +
         "LEFT JOIN favorites f ON f.channelId = c.id"
 
 @Dao
@@ -52,6 +52,21 @@ abstract class ChannelDao {
 
     @Query("DELETE FROM favorites WHERE channelId = :channelId")
     abstract suspend fun removeFavorite(channelId: String)
+
+    /** Every favorite id (including ones the current playlist no longer has), in list order. */
+    @Query("SELECT channelId FROM favorites ORDER BY position, addedAt")
+    abstract suspend fun favoriteIds(): List<String>
+
+    @Query("SELECT COALESCE(MAX(position), -1) + 1 FROM favorites")
+    abstract suspend fun nextFavoritePosition(): Int
+
+    @Query("UPDATE favorites SET position = :position WHERE channelId = :channelId")
+    abstract suspend fun setFavoritePosition(channelId: String, position: Int)
+
+    @Transaction
+    open suspend fun reorderFavorites(ids: List<String>) {
+        ids.forEachIndexed { i, id -> setFavoritePosition(id, i) }
+    }
 }
 
 @Dao

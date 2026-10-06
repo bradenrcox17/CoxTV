@@ -58,15 +58,14 @@ fun minutesLeft(endMs: Long, now: Long): String {
     return if (mins >= 60) "${mins / 60}h ${mins % 60}m left" else "$mins min left"
 }
 
-/** Horizontally scrolling category chips: Favorites, All, then the playlist's groups. */
+/** Horizontally scrolling chips for the categories the user turned on, in their order. */
 @Composable
 fun CategoryChips(
-    groups: List<String>,
+    keys: List<String>,
     selected: String,
     counts: Map<String, Int>,
     onSelect: (String) -> Unit,
 ) {
-    val keys = remember(groups) { listOf(Categories.FAVORITES, Categories.ALL) + groups }
     val state = rememberLazyListState()
     LaunchedEffect(selected, keys) {
         val i = keys.indexOf(selected)

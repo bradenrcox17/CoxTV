@@ -122,6 +122,25 @@ function favKeys() as object
     return out
 end function
 
+sub setFavKeys(keys as object)
+    regWrite("favorites", keys.Join(","))
+end sub
+
+' Categories shown in the sidebar, in the user's order ("__fav__", "__all__" or group names).
+' Out of the box only Favorites and All Channels; groups are added in Settings.
+function categoryOrder() as object
+    raw = regRead("categories")
+    if raw <> "" then
+        v = ParseJson(raw)
+        if type(v) = "roArray" then return v
+    end if
+    return ["__fav__", "__all__"]
+end function
+
+sub setCategoryOrder(keys as object)
+    regWrite("categories", FormatJson(keys))
+end sub
+
 ' Adds or removes a channel key from favorites. Returns true if it is now a favorite.
 function toggleFavorite(key as string) as boolean
     out = []

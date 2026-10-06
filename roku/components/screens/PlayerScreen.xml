@@ -7,12 +7,16 @@
     <Video id="video" width="1920" height="1080" enableUI="false" />
 
     <Label id="loading" translation="[0,500]" width="1920" horizAlign="center" text="Loading..." font="font:LargeBoldSystemFont" color="0xFFFFFFFF" visible="false" />
+    <Group id="badge" visible="false">
+      <Rectangle translation="[1500,50]" width="370" height="64" color="0x000000B3" />
+      <Label id="badgeText" translation="[1500,50]" width="370" height="64" horizAlign="center" vertAlign="center" font="font:SmallBoldSystemFont" color="0xFFFFFFFF" />
+    </Group>
 
     <Group id="errorBox" visible="false">
       <Rectangle translation="[410,370]" width="1100" height="300" color="0x000000D9" />
       <Label id="errorTitle" translation="[440,410]" width="1040" horizAlign="center" wrap="true" font="font:LargeBoldSystemFont" color="0xFFFFFFFF" />
       <Label id="errorMsg" translation="[440,500]" width="1040" horizAlign="center" wrap="true" maxLines="2" font="font:SmallSystemFont" color="0x9AA3B2FF" />
-      <Label translation="[440,600]" width="1040" horizAlign="center" text="Press Up / Down to change channel" font="font:SmallSystemFont" color="0x9AA3B2FF" />
+      <Label translation="[440,600]" width="1040" horizAlign="center" text="Press OK to try again, or Up / Down to change channel" font="font:SmallSystemFont" color="0x9AA3B2FF" />
     </Group>
 
     <Group id="info" visible="false">
@@ -45,6 +49,8 @@
     <Timer id="infoTimer" duration="5" repeat="false" />
     <Timer id="zapTimer" duration="0.45" repeat="false" />
     <Timer id="retryTimer" duration="2" repeat="false" />
+    <Timer id="stallTimer" duration="12" repeat="false" />
+    <Timer id="badgeTimer" duration="1.5" repeat="false" />
     <Timer id="clockTimer" duration="15" repeat="true" />
   </children>
 </component>

@@ -1,5 +1,6 @@
 package com.coxtv.data.db
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -23,6 +24,8 @@ data class ChannelEntity(
 data class FavoriteEntity(
     @PrimaryKey val channelId: String,
     val addedAt: Long,
+    /** Order in the Favorites list (user-arranged; new favorites go to the end). */
+    @ColumnInfo(defaultValue = "0") val position: Int = 0,
 )
 
 @Entity(
@@ -67,4 +70,6 @@ data class Channel(
     val epgIdRaw: String?,
     val epgId: String?,
     val favorite: Boolean,
+    /** Position in the Favorites list, or null when not a favorite. */
+    val favoritePosition: Int?,
 )

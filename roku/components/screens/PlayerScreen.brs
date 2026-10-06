@@ -25,6 +25,10 @@ sub init()
     m.zapTimer = m.top.findNode("zapTimer")
     m.retryTimer = m.top.findNode("retryTimer")
     m.clockTimer = m.top.findNode("clockTimer")
+    m.stallTimer = m.top.findNode("stallTimer")
+    m.badge = m.top.findNode("badge")
+    m.badgeText = m.top.findNode("badgeText")
+    m.badgeTimer = m.top.findNode("badgeTimer")
 
     m.video.observeField("state", "onVideoState")
     m.miniList.observeField("itemSelected", "onMiniSelected")
@@ -33,6 +37,8 @@ sub init()
     m.zapTimer.observeField("fire", "startPlayback")
     m.retryTimer.observeField("fire", "playCandidate")
     m.clockTimer.observeField("fire", "onClockTick")
+    m.stallTimer.observeField("fire", "onStall")
+    m.badgeTimer.observeField("fire", "showBadgeNow")
     m.top.observeField("params", "onParams")
     m.top.observeField("active", "onActive")
     m.top.observeField("closed", "onClosed")
@@ -46,7 +52,8 @@ sub init()
     m.playingKey = ""
     m.candidates = []
     m.cand = 0
-    m.retries = 0
+    m.hasPlayed = false   ' the current candidate has played at least once
+    m.reconnects = 0      ' reconnects since it last played
     m.nowNow = invalid
     m.nowNext = invalid
     m.listReply = invalid
@@ -88,6 +95,8 @@ sub onClosed()
     m.zapTimer.control = "stop"
     m.retryTimer.control = "stop"
     m.clockTimer.control = "stop"
+    m.stallTimer.control = "stop"
+    m.badgeTimer.control = "stop"
 end sub
 
 sub onList(event as object)
@@ -132,6 +141,10 @@ sub tune(index as integer, immediate as boolean)
     m.index = index
     m.channel = m.content.getChild(index)
     m.nowNow = invalid
+    ' Drop any reconnect or watchdog still pending for the previous channel.
+    m.retryTimer.control = "stop"
+    m.stallTimer.control = "stop"
+    hideBadge()
     updateInfo()
     showInfo()
     m.nowNextReply = svcCall({ type: "nowNext", key: m.channel.id }, "onNowNext")
@@ -151,7 +164,8 @@ sub startPlayback()
     m.playingKey = ch.id
     m.candidates = streamCandidates(ch.url)
     m.cand = 0
-    m.retries = 0
+    m.hasPlayed = false
+    m.reconnects = 0
     m.errorBox.visible = false
     playCandidate()
     regWrite("lastKey", ch.id)
@@ -159,41 +173,128 @@ sub startPlayback()
 end sub
 
 sub playCandidate()
+    m.retryTimer.control = "stop"
     if m.channel = invalid or m.cand >= m.candidates.Count() then return
     c = m.candidates[m.cand]
     print "CoxTV: play "; m.channel.title; " ["; c.format; "] "; c.url
     vc = CreateObject("roSGNode", "ContentNode")
     vc.setFields({ url: c.url, streamFormat: c.format, title: m.channel.title, live: true })
-    m.loading.visible = true
+    ' Once this stream has proven it works, don't let one bad segment or playlist reload
+    ' end playback. (Not on the first try, so a URL that doesn't work at all still fails
+    ' quickly and falls back to the next candidate.)
+    if m.hasPlayed and vc.hasField("ignoreStreamErrors") then vc.ignoreStreamErrors = true
+    if not m.hasPlayed then m.loading.visible = true
     m.video.control = "stop"
     m.video.content = vc
     m.video.control = "play"
+    ' Watchdog: a first start gets longer (provider channels can take a while to spin up).
+    m.stallTimer.control = "stop"
+    if m.hasPlayed then
+        m.stallTimer.duration = 15
+    else
+        m.stallTimer.duration = 25
+    end if
+    m.stallTimer.control = "start"
 end sub
 
 sub onVideoState()
     state = m.video.state
     if state = "playing" then
+        m.stallTimer.control = "stop"
         m.loading.visible = false
         m.errorBox.visible = false
-        m.retries = 0
+        hideBadge()
+        m.hasPlayed = true
+        m.reconnects = 0
     else if state = "buffering" then
-        m.loading.visible = true
+        if m.hasPlayed then
+            ' A stall mid-stream: keep the picture, show a small note only if it lasts,
+            ' and reconnect if it doesn't recover on its own.
+            showBadge("Buffering...")
+            m.stallTimer.control = "stop"
+            m.stallTimer.duration = 12
+            m.stallTimer.control = "start"
+        else
+            m.loading.visible = true
+        end if
     else if state = "error" then
         print "CoxTV: playback error "; m.video.errorCode; " "; m.video.errorMsg
-        if m.cand + 1 < m.candidates.Count() then
+        m.stallTimer.control = "stop"
+        if m.hasPlayed then
+            reconnect() ' the stream worked a moment ago: a hiccup, so try the same URL again
+        else if m.cand + 1 < m.candidates.Count() then
             m.cand = m.cand + 1 ' fall back, e.g. from the .m3u8 guess to the original .ts URL
             playCandidate()
         else
             m.loading.visible = false
+            hideBadge()
             showError("Can't play " + m.channel.title, m.video.errorMsg + " (error " + m.video.errorCode.ToStr() + ")")
         end if
     else if state = "finished" then
-        ' Live streams should not finish; reconnect a few times.
-        if m.retries < 3 then
-            m.retries = m.retries + 1
-            m.retryTimer.control = "start"
-        end if
+        ' Live streams should never finish; the provider dropped us. Reconnect.
+        m.stallTimer.control = "stop"
+        reconnect()
     end if
+end sub
+
+' Stuck loading or buffering for too long.
+sub onStall()
+    if m.channel = invalid or m.errorBox.visible then return
+    state = m.video.state
+    if state = "playing" or state = "paused" then return
+    print "CoxTV: stalled ("; state; ")"
+    if m.hasPlayed then
+        reconnect()
+    else if m.cand + 1 < m.candidates.Count() then
+        m.cand = m.cand + 1
+        playCandidate()
+    else
+        m.video.control = "stop"
+        m.loading.visible = false
+        showError("Can't play " + m.channel.title, "The channel didn't start. It may be offline right now.")
+    end if
+end sub
+
+' Quietly re-opens the current stream with a growing delay; gives up after a few tries in a row.
+sub reconnect()
+    delays = [1, 2, 3, 5, 8, 10]
+    if m.reconnects >= delays.Count() then
+        m.video.control = "stop"
+        m.loading.visible = false
+        hideBadge()
+        showError("Lost the signal for " + m.channel.title, "The channel stopped sending video.")
+        return
+    end if
+    m.retryTimer.duration = delays[m.reconnects]
+    m.reconnects = m.reconnects + 1
+    print "CoxTV: reconnect #"; m.reconnects; " in "; m.retryTimer.duration; "s"
+    showBadge("Reconnecting...")
+    m.retryTimer.control = "stop"
+    m.retryTimer.control = "start"
+end sub
+
+sub retryNow()
+    m.errorBox.visible = false
+    m.playingKey = ""
+    startPlayback()
+end sub
+
+' The badge appears only if the stall outlasts badgeTimer, so brief hiccups stay invisible.
+sub showBadge(text as string)
+    m.badgeText.text = text
+    if not m.badge.visible then
+        m.badgeTimer.control = "stop"
+        m.badgeTimer.control = "start"
+    end if
+end sub
+
+sub showBadgeNow()
+    if m.video.state <> "playing" then m.badge.visible = true
+end sub
+
+sub hideBadge()
+    m.badgeTimer.control = "stop"
+    m.badge.visible = false
 end sub
 
 sub showError(title as string, msg as string)
@@ -339,7 +440,9 @@ function onKeyEvent(key as string, press as boolean) as boolean
     else if key = "down" or key = "channeldown" then
         tune(m.index - 1, false)
     else if key = "OK" then
-        if m.info.visible then
+        if m.errorBox.visible then
+            retryNow()
+        else if m.info.visible then
             hideInfo()
         else
             showInfo()

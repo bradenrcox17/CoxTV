@@ -8,6 +8,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import org.json.JSONArray
 
 data class SourceConfig(
     val xtreamServer: String = "",
@@ -25,6 +26,8 @@ data class LastWatched(val channelId: String, val category: String)
 
 private val Context.dataStore by preferencesDataStore(name = "settings")
 
+private val DEFAULT_CATEGORIES = listOf(Categories.FAVORITES, Categories.ALL)
+
 class SettingsStore(private val context: Context) {
     private object Keys {
         val server = stringPreferencesKey("xt_server")
@@ -37,6 +40,7 @@ class SettingsStore(private val context: Context) {
         val lastCategory = stringPreferencesKey("last_category")
         val lastEpgRefresh = longPreferencesKey("last_epg_refresh")
         val lastChannelRefresh = longPreferencesKey("last_channel_refresh")
+        val categories = stringPreferencesKey("categories")
     }
 
     private val data get() = context.dataStore.data
@@ -52,6 +56,20 @@ class SettingsStore(private val context: Context) {
     }
 
     val lastEpgRefresh: Flow<Long> = data.map { it[Keys.lastEpgRefresh] ?: 0L }
+
+    /**
+     * Categories the user turned on, in their order (see [Categories]). Out of the box only
+     * Favorites and All Channels; playlist groups are added from Categories & favorites.
+     */
+    val categoryOrder: Flow<List<String>> = data.map { prefs ->
+        val raw = prefs[Keys.categories] ?: return@map DEFAULT_CATEGORIES
+        runCatching { JSONArray(raw).let { a -> List(a.length()) { a.getString(it) } } }
+            .getOrDefault(DEFAULT_CATEGORIES)
+    }
+
+    suspend fun setCategoryOrder(keys: List<String>) {
+        context.dataStore.edit { it[Keys.categories] = JSONArray(keys.distinct()).toString() }
+    }
 
     suspend fun config(): SourceConfig = config.first()
 

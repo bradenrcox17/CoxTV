@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Settings > Categories (params.mode = "categories") or Reorder favorites ("favorites"). -->
+<component name="OrganizeScreen" extends="BaseScreen">
+  <script type="text/brightscript" uri="OrganizeScreen.brs" />
+  <script type="text/brightscript" uri="pkg:/components/common/Utils.brs" />
+  <children>
+    <Label id="title" translation="[120,60]" font="font:LargeBoldSystemFont" color="0xF2F4F8FF" />
+    <Label id="hint" translation="[120,130]" width="1680" wrap="true" maxLines="2" font="font:SmallSystemFont" color="0x9AA3B2FF" />
+    <Rectangle translation="[100,220]" width="1720" height="790" color="0x141821FF" />
+    <MarkupList id="list" translation="[160,240]" itemComponentName="OrganizeItem" itemSize="[1600,80]"
+                itemSpacing="[0,6]" numRows="9" drawFocusFeedback="false" vertFocusAnimationStyle="floatingFocus" />
+    <Label id="empty" translation="[160,560]" width="1600" horizAlign="center" wrap="true" font="font:MediumSystemFont" color="0x9AA3B2FF" />
+    <Label id="status" translation="[120,1020]" width="1680" font="font:SmallBoldSystemFont" color="0xE0A030FF" />
+  </children>
+</component>
