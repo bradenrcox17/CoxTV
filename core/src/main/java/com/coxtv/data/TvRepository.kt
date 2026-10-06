@@ -1,0 +1,355 @@
+package com.coxtv.data
+
+import android.content.Context
+import android.util.Log
+import com.coxtv.data.db.AppDatabase
+import com.coxtv.data.db.Channel
+import com.coxtv.data.db.ChannelEntity
+import com.coxtv.data.db.ChannelHit
+import com.coxtv.data.db.NowHit
+import com.coxtv.data.db.FavoriteEntity
+import com.coxtv.data.db.ProgramEntity
+import com.coxtv.data.remote.M3uParser
+import com.coxtv.data.remote.XmltvParser
+import com.coxtv.data.remote.XtreamClient
+import com.coxtv.data.remote.download
+import com.coxtv.data.remote.getStream
+import com.coxtv.data.remote.openMaybeGzip
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import java.io.File
+import java.io.IOException
+
+private const val TAG = "CoxTV"
+private const val HOUR = 3_600_000L
+private const val DAY = 24 * HOUR
+
+data class SearchResult(
+    val channelId: String,
+    val title: String,
+    val channelName: String,
+    val groupName: String,
+    /** End of the show airing now, or 0 when there's no guide info. */
+    val endMs: Long,
+)
+
+/** Category keys. Anything else is a channel group name. */
+object Categories {
+    const val FAVORITES = "__favorites__"
+    const val ALL = "__all__"
+
+    fun label(key: String) = when (key) {
+        FAVORITES -> "Favorites"
+        ALL -> "All Channels"
+        else -> key
+    }
+
+    fun filter(channels: List<Channel>, key: String): List<Channel> = when (key) {
+        FAVORITES -> channels.filter { it.favorite }
+        ALL, "" -> channels
+        else -> channels.filter { it.groupName == key }
+    }
+}
+
+@OptIn(ExperimentalCoroutinesApi::class)
+class TvRepository(
+    private val context: Context,
+    private val db: AppDatabase,
+    private val settings: SettingsStore,
+    private val http: OkHttpClient,
+) {
+    val channels: Flow<List<Channel>> = db.channels().observeAll()
+    val groups: Flow<List<String>> = db.channels().observeGroups()
+
+    /** Program airing right now, keyed by EPG id; re-evaluated every minute. */
+    val nowPlaying: Flow<Map<String, ProgramEntity>> = minuteTicker()
+        .flatMapLatest { now -> db.programs().observeInRange(now, now + 1) }
+        .map { list -> list.associateBy { it.epgId } }
+
+    /** Programs for the given channels' EPG ids within [from, to), grouped by EPG id. */
+    suspend fun programsFor(epgIds: Collection<String>, from: Long, to: Long): Map<String, List<ProgramEntity>> {
+        if (epgIds.isEmpty()) return emptyMap()
+        val out = HashMap<String, List<ProgramEntity>>()
+        epgIds.distinct().chunked(500).forEach { chunk ->
+            db.programs().inRangeFor(chunk, from, to).groupBy { it.epgId }.forEach { (k, v) -> out[k] = v }
+        }
+        return out
+    }
+
+    // ---- Search: two small in-memory indexes, scanned with plain string matching ----
+    // (SQL LIKE over REPLACE() per row was ~0.5-1 s on the emulator; this is milliseconds.)
+
+    private class NameIndex(val rows: List<ChannelHit>, val keys: Array<String>)
+    private class NowIndex(val until: Long, val hits: List<NowHit>, val keys: Array<String>, val byChannel: Map<String, NowHit>)
+
+    @Volatile private var nameIndex: NameIndex? = null
+    @Volatile private var nowIndex: NowIndex? = null
+    private val searchMutex = Mutex()
+
+    private fun invalidateSearch(channels: Boolean) {
+        if (channels) nameIndex = null
+        nowIndex = null
+    }
+
+    /** Builds the indexes ahead of time (the Search screen calls this when it opens). */
+    suspend fun prepareSearch() = withContext(Dispatchers.IO) {
+        searchMutex.withLock { ensureIndexes(System.currentTimeMillis()) }
+    }
+
+    private suspend fun ensureIndexes(now: Long) {
+        if (nameIndex == null) {
+            val rows = db.channels().searchRows()
+            nameIndex = NameIndex(rows, Array(rows.size) { searchKey(rows[it].channelName) })
+        }
+        val ni = nowIndex
+        if (ni == null || now >= ni.until) {
+            val hits = db.programs().airingNow(now)
+            val until = hits.minOfOrNull { it.endMs } ?: (now + 15 * 60_000L)
+            nowIndex = NowIndex(until, hits, Array(hits.size) { searchKey(hits[it].title) }, hits.associateBy { it.channelId })
+        }
+    }
+
+    /**
+     * Partial, case-insensitive search that ignores spaces and punctuation ("whitesox" finds
+     * "White Sox"). Shows airing now whose title matches come first, then channels whose name
+     * matches ("espn", "sec network") with whatever they're showing now.
+     */
+    suspend fun search(query: String): List<SearchResult> = withContext(Dispatchers.IO) {
+        val key = searchKey(query)
+        if (key.length < 2) return@withContext emptyList()
+        val started = System.nanoTime()
+        val now = System.currentTimeMillis()
+        val (names, airing) = searchMutex.withLock {
+            ensureIndexes(now)
+            nameIndex!! to nowIndex!!
+        }
+        val events = ArrayList<SearchResult>()
+        for (i in airing.keys.indices) {
+            if (airing.keys[i].contains(key)) {
+                val h = airing.hits[i]
+                if (h.endMs > now) events += SearchResult(h.channelId, h.title, h.channelName, h.groupName, h.endMs)
+                if (events.size >= 100) break
+            }
+        }
+        events.sortBy { it.title.lowercase() }
+        val seen = events.mapTo(HashSet()) { it.channelId }
+        val channels = ArrayList<SearchResult>()
+        for (i in names.keys.indices) {
+            if (names.keys[i].contains(key)) {
+                val r = names.rows[i]
+                if (r.channelId in seen) continue
+                val p = airing.byChannel[r.channelId]?.takeIf { it.endMs > now }
+                channels += if (p != null) SearchResult(r.channelId, p.title, r.channelName, r.groupName, p.endMs)
+                else SearchResult(r.channelId, r.channelName, r.groupName, r.groupName, 0L)
+                if (channels.size >= 100) break
+            }
+        }
+        (events + channels).also {
+            Log.i(TAG, "search '$query': ${it.size} results in ${(System.nanoTime() - started) / 1_000_000} ms")
+        }
+    }
+    suspend fun channel(id: String): Channel? = db.channels().get(id)
+
+    suspend fun upcoming(epgId: String, limit: Int = 2): List<ProgramEntity> =
+        db.programs().upcoming(epgId, System.currentTimeMillis(), limit)
+
+    suspend fun programCount(): Int = db.programs().count()
+
+    suspend fun toggleFavorite(channel: Channel) {
+        if (channel.favorite) db.channels().removeFavorite(channel.id)
+        else db.channels().addFavorite(FavoriteEntity(channel.id, System.currentTimeMillis()))
+    }
+
+    /** Validates the sources by loading their channel lists, then saves the config. */
+    suspend fun connect(config: SourceConfig): Int {
+        val count = refreshChannels(config)
+        settings.saveConfig(config)
+        return count
+    }
+
+    suspend fun refreshChannels(config: SourceConfig? = null): Int = withContext(Dispatchers.IO) {
+        val started = System.nanoTime()
+        val cfg = config ?: settings.config()
+        if (!cfg.isConfigured) throw IOException("No source configured")
+
+        val fresh = ArrayList<ChannelEntity>()
+        if (cfg.hasXtream) {
+            val xtream = XtreamClient(http, cfg.xtreamServer, cfg.xtreamUser, cfg.xtreamPass)
+            xtream.authenticate()
+            fresh += xtream.liveChannels()
+        }
+        var detectedEpg: String? = null
+        if (cfg.hasM3u) {
+            val result = http.getStream(cfg.m3uUrl.trim()) { M3uParser.parse(it.bufferedReader()) }
+            detectedEpg = result.epgUrl
+            val offset = fresh.size
+            result.entries.forEachIndexed { i, e ->
+                fresh += ChannelEntity(
+                    id = "m:${e.url}",
+                    sortOrder = offset + i,
+                    number = e.chno?.toDoubleOrNull()?.toInt() ?: (offset + i + 1),
+                    name = e.name.ifBlank { e.tvgName ?: "Channel ${i + 1}" },
+                    logo = e.logo,
+                    groupName = e.group ?: "Uncategorized",
+                    streamUrl = e.url,
+                    epgIdRaw = e.tvgId,
+                    epgId = e.tvgId,
+                )
+            }
+        }
+        if (fresh.isEmpty()) throw IOException("No live channels found")
+
+        // Keep EPG ids that a previous guide import remapped, as long as the source id is unchanged.
+        val old = db.channels().allEntities().associateBy { it.id }
+        val merged = fresh.map { n ->
+            val o = old[n.id]
+            if (o != null && o.epgIdRaw == n.epgIdRaw && o.epgId != null) n.copy(epgId = o.epgId) else n
+        }
+        db.channels().replaceAll(merged)
+        settings.setDetectedEpg(detectedEpg)
+        settings.setLastChannelRefresh(System.currentTimeMillis())
+        invalidateSearch(channels = true)
+        Log.i(TAG, "channels loaded: ${merged.size} in ${(System.nanoTime() - started) / 1_000_000} ms")
+        merged.size
+    }
+
+    private val epgMutex = Mutex()
+
+    /** Downloads every configured XMLTV source and atomically replaces the guide. Returns program count. */
+    suspend fun refreshEpg(): Int = epgMutex.withLock {
+        withContext(Dispatchers.IO) { doRefreshEpg() }
+    }
+
+    private suspend fun doRefreshEpg(): Int {
+        val cfg = settings.config()
+        if (!cfg.isConfigured) return 0
+        val urls = buildList {
+            if (cfg.hasXtream) add(XtreamClient(http, cfg.xtreamServer, cfg.xtreamUser, cfg.xtreamPass).epgUrl())
+            if (cfg.hasM3u) {
+                val epg = cfg.epgUrl.ifBlank { settings.detectedEpg().orEmpty() }
+                if (epg.isNotBlank()) add(epg.trim())
+            }
+        }
+        if (urls.isEmpty()) return 0
+
+        // Download first so a network failure never wipes the existing guide.
+        val files = ArrayList<File>()
+        var lastError: Exception? = null
+        urls.forEachIndexed { i, url ->
+            try {
+                files += http.download(url, File(context.cacheDir, "epg_$i.tmp"))
+            } catch (e: Exception) {
+                Log.w(TAG, "EPG download failed: $url", e)
+                lastError = e
+            }
+        }
+        if (files.isEmpty()) throw lastError ?: IOException("Guide download failed")
+
+        try {
+            val count = importEpg(files)
+            invalidateSearch(channels = false)
+            settings.setLastEpgRefresh(System.currentTimeMillis())
+            return count
+        } finally {
+            files.forEach { it.delete() }
+        }
+    }
+
+    private fun importEpg(files: List<File>): Int {
+        val started = System.nanoTime()
+        val now = System.currentTimeMillis()
+        val minEnd = now - 2 * HOUR
+        // Big providers ship ~2 days for thousands of channels; 36h keeps import time and
+        // database size reasonable on a Fire Stick (the guide refreshes every 6h).
+        val maxStart = now + 36 * HOUR
+        var total = 0
+        db.runInTransaction {
+            db.programs().clearBlocking()
+            val matched = HashSet<String>()
+            var failures = 0
+            for (file in files) {
+                try {
+                    val batch = ArrayList<ProgramEntity>(1000)
+                    openMaybeGzip(file).use { input ->
+                        XmltvParser.parse(
+                            input,
+                            onChannels = { xml -> remapEpgIds(xml, matched) },
+                            onProgramme = { p ->
+                                if (p.endMs > minEnd && p.startMs < maxStart) {
+                                    batch += p
+                                    if (batch.size >= 1000) {
+                                        db.programs().insertBlocking(batch)
+                                        total += batch.size
+                                        batch.clear()
+                                    }
+                                }
+                            },
+                        )
+                    }
+                    if (batch.isNotEmpty()) {
+                        db.programs().insertBlocking(batch)
+                        total += batch.size
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "EPG parse failed for ${file.name}", e)
+                    failures++
+                }
+            }
+            if (failures == files.size) throw IOException("Could not read guide data")
+        }
+        Log.i(TAG, "EPG imported: $total programs in ${(System.nanoTime() - started) / 1_000_000} ms")
+        return total
+    }
+
+    /**
+     * Points channels at XMLTV ids. Channels whose id is missing or unknown are matched by
+     * normalized display name. Returns the XMLTV ids that any channel uses.
+     */
+    private fun remapEpgIds(xml: Map<String, List<String>>, matched: MutableSet<String>): Set<String> {
+        val byName = HashMap<String, String>()
+        for ((id, names) in xml) {
+            names.forEach { byName.putIfAbsent(normalize(it), id) }
+            byName.putIfAbsent(normalize(id), id)
+        }
+        val dao = db.channels()
+        val wanted = HashSet<String>()
+        for (ch in dao.allEntitiesBlocking()) {
+            val current = ch.epgId
+            if (current != null && current in xml) {
+                wanted += current
+                continue
+            }
+            if (current != null && current in matched) continue // satisfied by an earlier source
+            val match = ch.epgIdRaw?.let { byName[normalize(it)] } ?: byName[normalize(ch.name)]
+            if (match != null) {
+                if (match != current) dao.setEpgIdBlocking(ch.id, match)
+                wanted += match
+            }
+        }
+        matched += wanted
+        return wanted
+    }
+
+    private fun normalize(s: String) = s.lowercase().filter { it.isLetterOrDigit() }
+
+    /** Must match the REPLACE chain in the search queries (Daos.kt). */
+    private fun searchKey(s: String) =
+        s.lowercase().replace(" ", "").replace("-", "").replace(".", "").replace("'", "").trim()
+
+    private fun minuteTicker(): Flow<Long> = flow {
+        while (true) {
+            val now = System.currentTimeMillis()
+            emit(now)
+            delay(60_000 - now % 60_000 + 50)
+        }
+    }
+}

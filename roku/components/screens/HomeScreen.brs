@@ -1,0 +1,341 @@
+sub init()
+    m.side = m.top.findNode("side")
+    m.list = m.top.findNode("channels")
+    m.catTitle = m.top.findNode("catTitle")
+    m.catCount = m.top.findNode("catCount")
+    m.status = m.top.findNode("status")
+    m.empty = m.top.findNode("empty")
+    m.clock = m.top.findNode("clock")
+    m.debounce = m.top.findNode("debounce")
+    m.nowTimer = m.top.findNode("nowTimer")
+    m.clockTimer = m.top.findNode("clockTimer")
+    m.pageReply = invalid
+    m.listTotal = 0
+
+    m.side.observeField("itemFocused", "onSideFocused")
+    m.side.observeField("itemSelected", "onSideSelected")
+    m.list.observeField("itemSelected", "onChannelSelected")
+    m.debounce.observeField("fire", "onDebounce")
+    m.nowTimer.observeField("fire", "refreshNow")
+    m.clockTimer.observeField("fire", "updateClock")
+    m.top.observeField("active", "onActive")
+    m.top.observeField("closed", "onClosed")
+
+    svc = m.global.bus
+    svc.observeFieldScoped("categories", "buildSide")
+    svc.observeFieldScoped("playlistState", "onState")
+    svc.observeFieldScoped("status", "onStatus")
+    svc.observeFieldScoped("epgState", "onStatus")
+    svc.observeFieldScoped("epgVersion", "refreshNow")
+
+    m.sideKeys = []
+    m.current = invalid
+    m.pendingCat = invalid
+    m.focusKey = ""
+    m.focusListAfterLoad = false
+    m.listReply = invalid
+    m.nowReply = invalid
+    m.lastFocus = m.side
+
+    buildSide()
+    updateClock()
+    onStatus()
+    onState()
+    m.nowTimer.control = "start"
+    m.clockTimer.control = "start"
+end sub
+
+sub onActive()
+    if not m.top.active then return
+    m.lastFocus.setFocus(true)
+    buildSide()
+    if m.current = "__fav__" then
+        loadCategory("__fav__")
+    else
+        refreshNow()
+    end if
+end sub
+
+sub onClosed()
+    svc = m.global.bus
+    svc.unobserveFieldScoped("categories")
+    svc.unobserveFieldScoped("playlistState")
+    svc.unobserveFieldScoped("status")
+    svc.unobserveFieldScoped("epgState")
+    svc.unobserveFieldScoped("epgVersion")
+    m.nowTimer.control = "stop"
+    m.clockTimer.control = "stop"
+end sub
+
+sub updateClock()
+    m.clock.text = fmtClock(nowSecs())
+end sub
+
+sub buildSide()
+    keys = ["#search", "#guide", "#settings", "__fav__", "__all__"]
+    labels = ["Search what's on", "TV Guide", "Settings"]
+    labels.Push("Favorites  (" + favKeys().Count().ToStr() + ")")
+    labels.Push("All Channels  (" + m.global.bus.channelCount.ToStr() + ")")
+    cats = m.global.bus.categories
+    if cats <> invalid then
+        for each c in cats
+            keys.Push(c.name)
+            labels.Push(c.name + "  (" + c.count.ToStr() + ")")
+        end for
+    end if
+    root = CreateObject("roSGNode", "ContentNode")
+    for each label in labels
+        root.CreateChild("ContentNode").title = label
+    end for
+    focused = m.side.itemFocused
+    m.side.content = root
+    m.sideKeys = keys
+    if focused > 0 and focused < keys.Count() then m.side.jumpToItem = focused
+end sub
+
+sub onStatus()
+    svc = m.global.bus
+    text = svc.status
+    if text = "" then
+        if svc.epgState = "ready" then
+            text = "Guide loaded"
+        else if svc.epgState = "none" then
+            text = "No guide URL set"
+        else if svc.epgState = "error" then
+            text = "Guide unavailable"
+        end if
+    end if
+    m.status.text = text
+end sub
+
+sub onState()
+    state = m.global.bus.playlistState
+    if state = "loading" or state = "idle" then
+        showEmpty("Loading channels...")
+    else if state = "error" then
+        showEmpty("Couldn't load the playlist." + chr(10) + m.global.bus.status + chr(10) + "Open Settings to check the URL.")
+    else if state = "ready" then
+        buildSide()
+        if m.current = invalid then
+            ' First load: last category watched, else Favorites if any, else All.
+            last = regRead("lastCategory")
+            if last <> "" and (last = "__all__" or (last = "__fav__" and favKeys().Count() > 0) or hasGroup(last)) then
+                start = last
+            else if favKeys().Count() > 0 then
+                start = "__fav__"
+            else
+                start = "__all__"
+            end if
+            m.focusKey = regRead("lastKey")
+            m.focusListAfterLoad = true
+            for i = 0 to m.sideKeys.Count() - 1
+                if m.sideKeys[i] = start then m.side.jumpToItem = i
+            end for
+            loadCategory(start)
+        else
+            loadCategory(m.current)
+        end if
+    end if
+end sub
+
+function hasGroup(name as string) as boolean
+    for each k in m.sideKeys
+        if k = name then return true
+    end for
+    return false
+end function
+
+sub showEmpty(text as string)
+    m.empty.text = text
+    m.empty.visible = true
+end sub
+
+sub onSideFocused()
+    key = m.sideKeys[m.side.itemFocused]
+    if key = invalid or Left(key, 1) = "#" then return
+    m.pendingCat = key
+    m.debounce.control = "stop"
+    m.debounce.control = "start"
+end sub
+
+sub onDebounce()
+    if m.pendingCat <> invalid and m.pendingCat <> m.current then loadCategory(m.pendingCat)
+end sub
+
+sub onSideSelected()
+    key = m.sideKeys[m.side.itemSelected]
+    if key = invalid then return
+    if key = "#search" then
+        m.top.navigate = { action: "push", screen: "SearchScreen" }
+    else if key = "#guide" then
+        cat = m.current
+        if cat = invalid then cat = "__all__"
+        m.top.navigate = { action: "push", screen: "GuideScreen", params: { category: cat } }
+    else if key = "#settings" then
+        m.top.navigate = { action: "push", screen: "SetupScreen", params: { firstRun: false } }
+    else if key <> m.current then
+        m.focusListAfterLoad = true
+        loadCategory(key)
+    else
+        focusList()
+    end if
+end sub
+
+sub loadCategory(key as string)
+    m.pageReply = invalid
+    m.current = key
+    m.pendingCat = invalid
+    m.catTitle.text = categoryLabel(key)
+    m.catCount.text = ""
+    showEmpty("Loading...")
+    ' First screenful only; the rest arrives page by page in the background.
+    m.listReply = svcCall({ type: "list", category: key, start: 0, count: 200 }, "onList")
+end sub
+
+sub onList(event as object)
+    if m.listReply = invalid or not event.getRoSGNode().isSameNode(m.listReply) then return
+    m.listReply = invalid
+    data = event.getData()
+    items = data.items
+    if items = invalid then items = []
+    n = 0
+    if data.listTotal <> invalid then n = data.listTotal
+    content = CreateObject("roSGNode", "ContentNode")
+    appendContentRows(content, items, 0, items.Count())
+    m.list.content = content
+    m.listTotal = n
+    total = data.total
+    if m.current = "__all__" and total <> invalid and total > n then
+        m.catCount.text = "Showing " + n.ToStr() + " of " + total.ToStr() + " - open a category for all"
+    else
+        m.catCount.text = n.ToStr() + " channels"
+    end if
+    if n = 0 then
+        if m.current = "__fav__" then
+            showEmpty("No favorites yet." + chr(10) + "Press * on a channel to add it.")
+        else
+            showEmpty("No channels in this category.")
+        end if
+        if m.lastFocus.isSameNode(m.list) then
+            m.lastFocus = m.side
+            if m.top.active then m.side.setFocus(true)
+        end if
+        return
+    end if
+    m.empty.visible = false
+    tryFocusKey(content, 0)
+    if m.focusListAfterLoad then
+        m.focusListAfterLoad = false
+        focusList()
+    end if
+    requestNextPage()
+end sub
+
+sub requestNextPage()
+    content = m.list.content
+    if content = invalid then return
+    loaded = content.getChildCount()
+    if loaded >= m.listTotal then
+        m.pageReply = invalid
+        m.focusKey = ""
+        return
+    end if
+    m.pageReply = svcCall({ type: "list", category: m.current, start: loaded, count: 250 }, "onPage")
+end sub
+
+sub onPage(event as object)
+    if m.pageReply = invalid or not event.getRoSGNode().isSameNode(m.pageReply) then return
+    m.pageReply = invalid
+    data = event.getData()
+    content = m.list.content
+    if content = invalid or data.items = invalid or data.category <> m.current or data.start <> content.getChildCount() then return
+    appendContentRows(content, data.items, 0, data.items.Count())
+    tryFocusKey(content, data.start)
+    requestNextPage()
+end sub
+
+' Jump to the last-watched channel once its page has loaded.
+sub tryFocusKey(content as object, fromIndex as integer)
+    if m.focusKey = "" then return
+    for i = fromIndex to content.getChildCount() - 1
+        if content.getChild(i).id = m.focusKey then
+            m.list.jumpToItem = i
+            m.focusKey = ""
+            return
+        end if
+    end for
+end sub
+sub focusList()
+    if m.list.content <> invalid and m.list.content.getChildCount() > 0 then
+        m.lastFocus = m.list
+        ' Never steal focus while another screen (e.g. the resumed player) is on top.
+        if m.top.active then m.list.setFocus(true)
+    end if
+end sub
+
+sub onChannelSelected()
+    content = m.list.content
+    if content = invalid then return
+    ch = content.getChild(m.list.itemSelected)
+    if ch = invalid then return
+    m.top.navigate = { action: "push", screen: "PlayerScreen", params: { category: m.current, key: ch.id, content: content } }
+end sub
+
+' Refresh "now playing" on the visible list in place (no rebuild, keeps focus).
+sub refreshNow()
+    content = m.list.content
+    if content = invalid or content.getChildCount() = 0 then return
+    n = content.getChildCount()
+    if n > 600 then n = 600
+    keys = []
+    for i = 0 to n - 1
+        keys.Push(content.getChild(i).id)
+    end for
+    m.nowReply = svcCall({ type: "now", keys: keys }, "onNow")
+end sub
+
+sub onNow(event as object)
+    if m.nowReply = invalid or not event.getRoSGNode().isSameNode(m.nowReply) then return
+    m.nowReply = invalid
+    now = event.getData().now
+    content = m.list.content
+    if content = invalid or now = invalid then return
+    n = content.getChildCount()
+    if n > 600 then n = 600
+    for i = 0 to n - 1
+        node = content.getChild(i)
+        v = now[node.id]
+        if v <> invalid then
+            if node.description <> v[0] or node.length <> v[2] then node.setFields({ description: v[0], playStart: v[1], length: v[2] })
+        else if node.description <> "" then
+            node.setFields({ description: "", playStart: 0, length: 0 })
+        end if
+    end for
+end sub
+
+function onKeyEvent(key as string, press as boolean) as boolean
+    if not press then return false
+    if key = "right" and m.side.isInFocusChain() then
+        focusList()
+        return true
+    else if key = "left" and m.list.isInFocusChain() then
+        m.side.setFocus(true)
+        m.lastFocus = m.side
+        return true
+    else if key = "options" and m.list.isInFocusChain() then
+        content = m.list.content
+        if content <> invalid then
+            ch = content.getChild(m.list.itemFocused)
+            if ch <> invalid then
+                if toggleFavorite(ch.id) then
+                    ch.starRating = 100
+                else
+                    ch.starRating = 0
+                end if
+                buildSide()
+            end if
+        end if
+        return true
+    end if
+    return false
+end function

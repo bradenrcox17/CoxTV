@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<component name="SearchScreen" extends="BaseScreen">
+  <script type="text/brightscript" uri="SearchScreen.brs" />
+  <script type="text/brightscript" uri="pkg:/components/common/Utils.brs" />
+  <children>
+    <Label translation="[80,50]" text="Search what's on now" font="font:LargeBoldSystemFont" color="0xF2F4F8FF" />
+    <Label translation="[80,112]" width="640" wrap="true" font="font:SmallSystemFont" color="0x9AA3B2FF"
+           text="Shows on now (Braves, White Sox) or channels (ESPN, SEC Network)" />
+    <MiniKeyboard id="keyboard" translation="[80,200]" />
+    <Label id="hint" translation="[760,120]" width="1100" font="font:SmallSystemFont" color="0x9AA3B2FF" text="Type at least 2 letters" />
+    <MarkupList id="results" translation="[760,200]" itemComponentName="SearchItem" itemSize="[1100,100]"
+                itemSpacing="[0,8]" numRows="8" drawFocusFeedback="false" vertFocusAnimationStyle="floatingFocus" />
+    <Timer id="debounce" duration="0.4" repeat="false" />
+  </children>
+</component>

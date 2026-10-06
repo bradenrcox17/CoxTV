@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<component name="SearchItem" extends="Group">
+  <interface>
+    <field id="itemContent" type="node" onChange="onContent" />
+    <field id="focusPercent" type="float" onChange="onFocus" />
+    <field id="listHasFocus" type="boolean" onChange="onFocus" />
+  </interface>
+  <script type="text/brightscript" uri="SearchItem.brs" />
+  <children>
+    <Rectangle id="bg" width="1100" height="100" color="0x2F80FFFF" opacity="0" />
+    <Label id="title" translation="[24,10]" width="1052" height="46" font="font:MediumBoldSystemFont" color="0xFFFFFFFF" />
+    <Label id="sub" translation="[24,56]" width="1052" height="34" font="font:SmallSystemFont" color="0xB8C0CCFF" />
+  </children>
+</component>

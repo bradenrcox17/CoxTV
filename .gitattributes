@@ -1,0 +1,8 @@
+* text=auto
+# Shell script must keep Unix line endings; Windows scripts keep CRLF.
+gradlew text eol=lf
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+*.png binary
+*.jpg binary
+*.jar binary

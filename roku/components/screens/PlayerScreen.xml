@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<component name="PlayerScreen" extends="BaseScreen">
+  <script type="text/brightscript" uri="PlayerScreen.brs" />
+  <script type="text/brightscript" uri="pkg:/components/common/Utils.brs" />
+  <children>
+    <Rectangle id="black" width="1920" height="1080" color="0x000000FF" />
+    <Video id="video" width="1920" height="1080" enableUI="false" />
+
+    <Label id="loading" translation="[0,500]" width="1920" horizAlign="center" text="Loading..." font="font:LargeBoldSystemFont" color="0xFFFFFFFF" visible="false" />
+
+    <Group id="errorBox" visible="false">
+      <Rectangle translation="[410,370]" width="1100" height="300" color="0x000000D9" />
+      <Label id="errorTitle" translation="[440,410]" width="1040" horizAlign="center" wrap="true" font="font:LargeBoldSystemFont" color="0xFFFFFFFF" />
+      <Label id="errorMsg" translation="[440,500]" width="1040" horizAlign="center" wrap="true" maxLines="2" font="font:SmallSystemFont" color="0x9AA3B2FF" />
+      <Label translation="[440,600]" width="1040" horizAlign="center" text="Press Up / Down to change channel" font="font:SmallSystemFont" color="0x9AA3B2FF" />
+    </Group>
+
+    <Group id="info" visible="false">
+      <Poster translation="[0,560]" width="1920" height="520" uri="pkg:/images/gradient.png" />
+      <Rectangle translation="[90,750]" width="220" height="124" color="0x1F2532FF" />
+      <Label id="infoInitials" translation="[90,750]" width="220" height="124" horizAlign="center" vertAlign="center" font="font:MediumBoldSystemFont" color="0x9AA3B2FF" />
+      <Poster id="infoLogo" translation="[90,750]" width="220" height="124" loadDisplayMode="scaleToFit" />
+      <Label id="infoNum" translation="[90,890]" width="220" horizAlign="center" font="font:LargeBoldSystemFont" color="0xFFFFFFFF" />
+      <Poster id="infoFav" translation="[360,742]" width="40" height="40" uri="pkg:/images/star.png" visible="false" />
+      <Label id="infoName" translation="[360,734]" width="1150" font="font:LargeBoldSystemFont" color="0xFFFFFFFF" />
+      <Label id="infoClock" translation="[1530,740]" width="300" horizAlign="right" font="font:MediumSystemFont" color="0x9AA3B2FF" />
+      <Label id="infoTitle" translation="[360,800]" width="1470" font="font:MediumBoldSystemFont" color="0x5A9BFFFF" />
+      <Label id="infoTime" translation="[360,852]" width="360" font="font:SmallSystemFont" color="0x9AA3B2FF" />
+      <Rectangle id="infoBarBg" translation="[730,866]" width="600" height="6" color="0xFFFFFF33" />
+      <Rectangle id="infoBar" translation="[730,866]" width="0" height="6" color="0x2F80FFFF" />
+      <Label id="infoLeft" translation="[1350,852]" width="300" font="font:SmallSystemFont" color="0x9AA3B2FF" />
+      <Label id="infoDesc" translation="[360,900]" width="1470" height="84" wrap="true" maxLines="2" font="font:SmallSystemFont" color="0xDDE2EAFF" />
+      <Label id="infoNext" translation="[360,988]" width="1470" font="font:SmallSystemFont" color="0x9AA3B2FF" />
+      <Label translation="[360,1030]" width="1470" font="font:SmallestSystemFont" color="0x7A8494FF"
+             text="Up/Down: channel    Left: mini guide    OK: hide    *: favorite    Replay: previous channel" />
+    </Group>
+
+    <Group id="mini" visible="false">
+      <Rectangle width="680" height="1080" color="0x000000E6" />
+      <Label id="miniTitle" translation="[40,40]" width="600" font="font:MediumBoldSystemFont" color="0xFFFFFFFF" />
+      <MarkupList id="miniList" translation="[30,110]" itemComponentName="MiniItem" itemSize="[620,84]"
+                  itemSpacing="[0,6]" numRows="10" drawFocusFeedback="false" vertFocusAnimationStyle="floatingFocus" />
+    </Group>
+
+    <Timer id="infoTimer" duration="5" repeat="false" />
+    <Timer id="zapTimer" duration="0.45" repeat="false" />
+    <Timer id="retryTimer" duration="2" repeat="false" />
+    <Timer id="clockTimer" duration="15" repeat="true" />
+  </children>
+</component>

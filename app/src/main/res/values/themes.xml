@@ -1,0 +1,9 @@
+<resources>
+    <style name="Theme.CoxTV" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/background</item>
+        <item name="android:colorBackground">@color/background</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowFullscreen">true</item>
+    </style>
+    <color name="background">#FF0A0C10</color>
+</resources>

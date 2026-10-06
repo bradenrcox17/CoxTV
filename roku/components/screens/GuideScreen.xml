@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<component name="GuideScreen" extends="BaseScreen">
+  <script type="text/brightscript" uri="GuideScreen.brs" />
+  <script type="text/brightscript" uri="pkg:/components/common/Utils.brs" />
+  <children>
+    <Label id="title" translation="[60,36]" width="1460" font="font:LargeBoldSystemFont" color="0xF2F4F8FF" />
+    <Label id="meta" translation="[60,100]" width="1460" font="font:SmallSystemFont" color="0x2F80FFFF" />
+    <Label id="desc" translation="[60,142]" width="1460" height="96" wrap="true" maxLines="2" font="font:SmallSystemFont" color="0x9AA3B2FF" />
+    <Label id="clock" translation="[1540,40]" width="320" horizAlign="right" font="font:MediumSystemFont" color="0x9AA3B2FF" />
+    <Label id="category" translation="[1260,92]" width="600" horizAlign="right" font="font:SmallSystemFont" color="0x9AA3B2FF" />
+    <Label id="day" translation="[60,258]" width="380" font="font:SmallSystemFont" color="0x9AA3B2FF" />
+    <Group id="ruler" />
+    <Group id="rows" />
+    <Rectangle id="nowLine" width="3" height="706" color="0x2F80FFCC" visible="false" />
+    <Label id="empty" translation="[0,600]" width="1920" horizAlign="center" font="font:MediumSystemFont" color="0x9AA3B2FF" text="Loading..." />
+    <Timer id="clockTimer" duration="30" repeat="true" />
+  </children>
+</component>

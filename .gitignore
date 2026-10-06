@@ -1,0 +1,27 @@
+.gradle/
+.kotlin/
+build/
+local.properties
+.idea/
+*.iml
+captures/
+
+# Signing: the release keystore and its passwords never go in the repo
+*.jks
+*.keystore
+keystore.properties
+signing.properties
+
+# Build outputs and packaged releases
+*.apk
+*.aab
+*.zip
+dist/
+roku/out/
+
+# Simulator screenshots show the channel lineup from a personal Threadfin (local stations)
+roku/screenshots/
+
+# Local secrets / per-machine settings
+.env
+*.secret

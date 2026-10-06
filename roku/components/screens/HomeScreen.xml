@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<component name="HomeScreen" extends="BaseScreen">
+  <script type="text/brightscript" uri="HomeScreen.brs" />
+  <script type="text/brightscript" uri="pkg:/components/common/Utils.brs" />
+  <children>
+    <Label id="brand" translation="[80,48]" text="CoxTV" font="font:LargeBoldSystemFont" color="0x2F80FFFF" />
+    <Label id="clock" translation="[300,58]" width="220" horizAlign="right" font="font:MediumSystemFont" color="0x9AA3B2FF" />
+    <LabelList id="side" translation="[60,140]" itemSize="[460,64]" itemSpacing="[0,4]" numRows="13"
+               color="0xF2F4F8FF" focusedColor="0xFFFFFFFF" focusBitmapBlendColor="0x2F80FFFF"
+               font="font:SmallSystemFont" focusedFont="font:SmallBoldSystemFont" vertFocusAnimationStyle="floatingFocus" />
+
+    <Label id="catTitle" translation="[580,48]" width="800" font="font:LargeBoldSystemFont" color="0xF2F4F8FF" />
+    <Label id="catCount" translation="[580,104]" width="820" font="font:SmallSystemFont" color="0x9AA3B2FF" />
+    <Label id="status" translation="[1160,104]" width="700" horizAlign="right" font="font:SmallSystemFont" color="0x9AA3B2FF" />
+    <MarkupList id="channels" translation="[580,150]" itemComponentName="ChannelItem" itemSize="[1280,100]"
+                itemSpacing="[0,8]" numRows="8" drawFocusFeedback="false" vertFocusAnimationStyle="floatingFocus" />
+    <Label id="empty" translation="[580,480]" width="1280" horizAlign="center" wrap="true" font="font:MediumSystemFont" color="0x9AA3B2FF" />
+
+    <Timer id="debounce" duration="0.35" repeat="false" />
+    <Timer id="nowTimer" duration="120" repeat="true" />
+    <Timer id="clockTimer" duration="15" repeat="true" />
+  </children>
+</component>

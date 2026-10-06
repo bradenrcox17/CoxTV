@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Common interface for every screen. MainScene sets params, then active=true;
+  screens set navigate to ask MainScene to push/pop/replace/reset screens.
+  closed=true is set when the screen is removed so it can release resources.
+-->
+<component name="BaseScreen" extends="Group">
+  <interface>
+    <field id="params" type="assocarray" />
+    <field id="navigate" type="assocarray" alwaysNotify="true" />
+    <field id="active" type="boolean" alwaysNotify="true" />
+    <field id="closed" type="boolean" />
+  </interface>
+</component>

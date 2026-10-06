@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Channel row. No logo on purpose: with thousands of channels, image loading is the
+     slowest part of scrolling. The logo is shown in the player once a channel plays. -->
+<component name="ChannelItem" extends="Group">
+  <interface>
+    <field id="itemContent" type="node" onChange="onContent" />
+    <field id="focusPercent" type="float" onChange="onFocus" />
+    <field id="listHasFocus" type="boolean" onChange="onFocus" />
+  </interface>
+  <script type="text/brightscript" uri="ChannelItem.brs" />
+  <script type="text/brightscript" uri="pkg:/components/common/Utils.brs" />
+  <children>
+    <Rectangle id="bg" width="1280" height="100" color="0x2F80FFFF" opacity="0" />
+    <Label id="num" translation="[20,0]" width="110" height="100" vertAlign="center" font="font:MediumSystemFont" color="0x9AA3B2FF" />
+    <Label id="name" translation="[140,10]" width="1040" height="46" font="font:MediumBoldSystemFont" color="0xF2F4F8FF" />
+    <Label id="now" translation="[140,54]" width="1040" height="34" font="font:SmallSystemFont" color="0xB8C0CCFF" />
+    <Rectangle id="barBg" translation="[140,90]" width="400" height="4" color="0xFFFFFF33" />
+    <Rectangle id="bar" translation="[140,90]" width="0" height="4" color="0x2F80FFFF" />
+    <Poster id="star" translation="[1208,32]" width="36" height="36" uri="pkg:/images/star.png" visible="false" />
+  </children>
+</component>

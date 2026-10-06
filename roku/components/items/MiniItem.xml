@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<component name="MiniItem" extends="Group">
+  <interface>
+    <field id="itemContent" type="node" onChange="onContent" />
+    <field id="focusPercent" type="float" onChange="onFocus" />
+    <field id="listHasFocus" type="boolean" onChange="onFocus" />
+  </interface>
+  <script type="text/brightscript" uri="MiniItem.brs" />
+  <children>
+    <Rectangle id="bg" width="620" height="84" color="0x2F80FFFF" opacity="0" />
+    <Label id="num" translation="[14,0]" width="90" height="84" vertAlign="center" font="font:SmallSystemFont" color="0x9AA3B2FF" />
+    <Label id="name" translation="[110,6]" width="460" height="40" font="font:SmallBoldSystemFont" color="0xFFFFFFFF" />
+    <Label id="now" translation="[110,44]" width="460" height="32" font="font:SmallestSystemFont" color="0xB8C0CCFF" />
+    <Poster id="star" translation="[578,28]" width="28" height="28" uri="pkg:/images/star.png" visible="false" />
+  </children>
+</component>

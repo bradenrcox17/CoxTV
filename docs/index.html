@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CoxTV Install Guide</title>
+  <meta name="description" content="How to install CoxTV on Amazon Fire TV Stick, Roku and Android phones.">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="hero">
+    <div class="wrap">
+      <h1 class="logo">CoxTV</h1>
+      <p class="tagline">Live TV with a channel guide, favorites and search, on Fire TV Stick, Roku and Android phones.</p>
+      <nav class="pills" aria-label="Choose your device">
+        <a href="#firestick">Fire TV Stick</a>
+        <a href="#roku">Roku</a>
+        <a href="#phone">Android phone</a>
+        <a href="#updating">Updating</a>
+        <a href="#help">Troubleshooting</a>
+      </nav>
+      <p class="note">You'll need your TV service's <strong>playlist (M3U) link</strong>. Your provider gives you this; it usually starts with <code>http://</code> and is long. A guide (XMLTV) link is optional.</p>
+    </div>
+  </header>
+
+  <main class="wrap">
+
+    <!-- ============================ FIRE TV ============================ -->
+    <section id="firestick">
+      <h2><span class="badge">1</span> Fire TV Stick</h2>
+      <p class="lead">About 10 minutes. You'll install a free app called <strong>Downloader</strong>, then use it to install CoxTV.</p>
+
+      <ol class="steps">
+        <li>
+          <h3>Install Downloader</h3>
+          <p>On the Fire TV home screen, go to <b>Find</b> (the magnifying glass) &rarr; <b>Search</b>, type <b>Downloader</b>, and pick the orange <b>Downloader</b> app. Select <b>Get</b> or <b>Download</b>.</p>
+          <figure class="shot">Screenshot: Downloader in the Amazon Appstore <span>docs/images/firetv-downloader.png</span></figure>
+        </li>
+        <li>
+          <h3>Turn on Developer Options</h3>
+          <p>Go to <b>Settings</b> &rarr; <b>My Fire TV</b> &rarr; <b>About</b>. Highlight the first line (your device name, e.g. "Fire TV Stick 4K") and press the <b>OK</b> button on the remote <b>7 times</b>, until it says <i>"You are now a developer"</i>.</p>
+          <figure class="shot">Screenshot: About screen with the device name highlighted <span>docs/images/firetv-about.png</span></figure>
+        </li>
+        <li>
+          <h3>Allow Downloader to install apps</h3>
+          <p>Press <b>Back</b> once to <b>My Fire TV</b>, open <b>Developer Options</b> &rarr; <b>Install unknown apps</b>, and turn <b>Downloader</b> to <b>ON</b>.</p>
+          <p class="small">Older Fire TVs show <b>Apps from Unknown Sources</b> instead. Turn that <b>ON</b>.</p>
+          <figure class="shot">Screenshot: Install unknown apps &rarr; Downloader ON <span>docs/images/firetv-unknown-apps.png</span></figure>
+        </li>
+        <li>
+          <h3>Download CoxTV</h3>
+          <p>Open <b>Downloader</b> (allow access to files if it asks). In the box, type this code and select <b>Go</b>:</p>
+          <p class="code-big">[DOWNLOADER CODE]</p>
+          <p class="small">If the code doesn't work, type this address instead:<br><code class="wrapcode">https://github.com/bradenrcox17/CoxTV/releases/latest/download/CoxTV.apk</code></p>
+          <figure class="shot">Screenshot: Downloader with the code typed in <span>docs/images/firetv-code.png</span></figure>
+        </li>
+        <li>
+          <h3>Install</h3>
+          <p>When the download finishes, select <b>Install</b>, then <b>Open</b>. Downloader may offer to delete the install file afterward. Say <b>Delete</b>, since it isn't needed any more.</p>
+          <figure class="shot">Screenshot: Install button <span>docs/images/firetv-install.png</span></figure>
+        </li>
+        <li>
+          <h3>Enter your playlist link</h3>
+          <p>The first time CoxTV opens, highlight <b>M3U playlist URL</b>, press <b>OK</b>, type your link, and choose <b>Done</b>. Add the guide (XMLTV) link the same way if you have one, then select <b>Connect</b>. Loading a big channel list can take up to a minute.</p>
+          <p class="tip"><b>Tip:</b> long links are much easier to type with the free <b>Amazon Fire TV</b> app on your phone, which gives you your phone's keyboard.</p>
+          <p class="small">Have an Xtream login (server, username, password) instead? Fill in the <b>Xtream Codes</b> boxes on the left.</p>
+          <figure class="shot">Screenshot: CoxTV setup screen <span>docs/images/firetv-setup.png</span></figure>
+        </li>
+        <li>
+          <h3>Put CoxTV on your home screen</h3>
+          <p>Hold the <b>Home</b> button &rarr; <b>Apps</b>, highlight <b>CoxTV</b>, press the <b>&#9776; Menu</b> button and choose <b>Move to front</b>.</p>
+        </li>
+      </ol>
+
+      <div class="card">
+        <h3>Using CoxTV with the remote</h3>
+        <ul>
+          <li><b>Up / Down</b> while watching: change channel</li>
+          <li><b>Left</b> while watching: mini channel list; <b>OK</b>: show or hide the info bar</li>
+          <li><b>&#9776; Menu</b> (or hold OK) on a channel: add or remove a favorite</li>
+          <li>Sidebar: <b>Search what's on</b>, <b>TV Guide</b>, <b>Check for updates</b></li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- ============================ ROKU ============================ -->
+    <section id="roku">
+      <h2><span class="badge">2</span> Roku</h2>
+      <p class="lead">About 10 minutes. You'll need a <b>Windows PC</b> on the same Wi-Fi as the Roku. CoxTV isn't in the Roku Channel Store, so it's installed through Roku's Developer Mode.</p>
+
+      <ol class="steps">
+        <li>
+          <h3>Turn on Developer Mode</h3>
+          <p>On the Roku remote, press this sequence (it's normal that nothing happens until the end):</p>
+          <p class="keys"><kbd>Home</kbd><kbd>Home</kbd><kbd>Home</kbd> <kbd>&uarr;</kbd><kbd>&uarr;</kbd> <kbd>&rarr;</kbd><kbd>&larr;</kbd><kbd>&rarr;</kbd><kbd>&larr;</kbd><kbd>&rarr;</kbd></p>
+          <p>A <b>Developer Settings</b> screen appears. <b>Write down the IP address</b> it shows (like <code>192.168.1.50</code>). Choose <b>Enable installer and restart</b>, agree to the license, then <b>create a password</b> and write it down too. The Roku restarts.</p>
+          <figure class="shot">Screenshot: Roku Developer Settings screen with the IP address <span>docs/images/roku-devmode.png</span></figure>
+        </li>
+        <li>
+          <h3>Download the installer on your PC</h3>
+          <p><a class="btn" href="https://github.com/bradenrcox17/CoxTV/releases/latest/download/CoxTV-Roku-Installer.bat">Download the Roku installer</a></p>
+          <p class="small">If your browser warns about the file, choose <b>Keep</b>.</p>
+        </li>
+        <li>
+          <h3>Run it</h3>
+          <p>Double-click <b>CoxTV-Roku-Installer.bat</b>. If Windows shows <i>"Windows protected your PC"</i>, click <b>More info</b> &rarr; <b>Run anyway</b>.</p>
+          <p>Type the Roku's <b>IP address</b> and the <b>developer password</b> from step 1. After a few seconds you'll see <b class="ok">SUCCESS</b>, and CoxTV opens on your TV. The installer remembers the IP and password for next time.</p>
+          <figure class="shot">Screenshot: installer window showing SUCCESS <span>docs/images/roku-installer.png</span></figure>
+        </li>
+        <li>
+          <h3>Enter your playlist link</h3>
+          <p>In CoxTV, select <b>Playlist (M3U) URL</b>, type your link, choose <b>OK</b>, then <b>Save and load channels</b>. (Have an Xtream login? Choose <b>Enter Xtream login instead</b>.)</p>
+          <p class="tip"><b>Tip:</b> the free <b>Roku</b> app on your phone has a keyboard button that makes typing long links much easier.</p>
+          <figure class="shot">Screenshot: CoxTV setup on Roku <span>docs/images/roku-setup.png</span></figure>
+        </li>
+      </ol>
+      <p class="small">CoxTV appears on the Roku home screen like any other channel. A Roku can hold one Developer Mode app at a time. It stays installed through restarts, but a factory reset removes it. Just run the installer again.</p>
+    </section>
+
+    <!-- ============================ PHONE ============================ -->
+    <section id="phone">
+      <h2><span class="badge">3</span> Android phone or tablet</h2>
+      <p class="lead">About 3 minutes. Do this <b>on the phone</b>.</p>
+      <p class="center"><a class="btn btn-big" href="https://github.com/bradenrcox17/CoxTV/releases/latest/download/CoxTV-mobile.apk">Download CoxTV for Android</a></p>
+
+      <ol class="steps">
+        <li>
+          <h3>Download</h3>
+          <p>Tap the button above in <b>Chrome</b> (or Samsung Internet). If it says <i>"File might be harmful"</i>, tap <b>Download anyway</b>.</p>
+          <figure class="shot">Screenshot: browser download prompt <span>docs/images/phone-download.png</span></figure>
+        </li>
+        <li>
+          <h3>Allow your browser to install apps</h3>
+          <p>Tap the finished download (or open it from <b>My Files &rarr; Downloads</b>). If it says installing unknown apps isn't allowed, tap <b>Settings</b>, turn on <b>Allow from this source</b>, then go back and tap <b>Install</b>.</p>
+          <figure class="shot">Screenshot: "Allow from this source" switch <span>docs/images/phone-unknown-apps.png</span></figure>
+        </li>
+        <li>
+          <h3>Get past Play Protect</h3>
+          <p>Google Play Protect may warn you because CoxTV isn't from the Play Store. Tap <b>More details</b> &rarr; <b>Install anyway</b>. If it offers to scan the app, you can choose <b>Don't send</b> or <b>Scan app</b>; either is fine.</p>
+          <figure class="shot">Screenshot: Play Protect dialog with "Install anyway" <span>docs/images/phone-play-protect.png</span></figure>
+        </li>
+        <li>
+          <h3>Enter your playlist link</h3>
+          <p>Open <b>CoxTV</b>, paste your <b>Playlist (M3U) link</b> (and guide link if you have one), and tap <b>Connect</b>.</p>
+          <figure class="shot">Screenshot: CoxTV phone setup <span>docs/images/phone-setup.png</span></figure>
+        </li>
+      </ol>
+      <div class="card">
+        <h3>Watching on your phone</h3>
+        <ul>
+          <li>Tap a channel to watch full screen. <b>Swipe up or down</b> to change channel, <b>tap</b> to show the info bar.</li>
+          <li>Press <b>Home</b> while watching, or tap the picture-in-picture button, to keep watching in a small window.</li>
+          <li>Tap the <b>heart</b> on a channel to add it to Favorites.</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- ============================ UPDATING ============================ -->
+    <section id="updating">
+      <h2>Updating</h2>
+      <div class="grid">
+        <div class="card">
+          <h3>Fire TV Stick &amp; phone</h3>
+          <p>CoxTV checks for updates each time it starts and offers <b>Update now</b>. The first time, it asks you to allow CoxTV to install apps: turn it on, go back, and the update continues. Your channels and favorites are kept.</p>
+          <p class="small">Check anytime: Fire TV sidebar &rarr; <b>Check for updates</b>; phone &rarr; <b>Settings</b> &rarr; <b>Check for updates</b>.</p>
+        </div>
+        <div class="card">
+          <h3>Roku</h3>
+          <p>Run <b>CoxTV-Roku-Installer.bat</b> again (download a fresh copy if you deleted it). Press <b>Enter</b> twice to reuse the saved IP and password.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================ HELP ============================ -->
+    <section id="help">
+      <h2>Troubleshooting</h2>
+      <details>
+        <summary>Downloader says the code is invalid</summary>
+        <p>Type the full address instead: <code class="wrapcode">https://github.com/bradenrcox17/CoxTV/releases/latest/download/CoxTV.apk</code></p>
+      </details>
+      <details>
+        <summary>"App not installed" or "package conflicts with an existing package"</summary>
+        <p>An older test copy of CoxTV is installed. Uninstall it (Fire TV: <b>Settings &rarr; Applications &rarr; Manage Installed Applications &rarr; CoxTV &rarr; Uninstall</b>; phone: press and hold the icon &rarr; <b>Uninstall</b>), then install again.</p>
+      </details>
+      <details>
+        <summary>Channels won't load / connection error</summary>
+        <ul>
+          <li>Check the playlist link was typed completely. Long links are easy to cut short.</li>
+          <li>Open the link in a web browser. If it doesn't download a playlist there, contact your provider (the subscription may have expired).</li>
+          <li>Very large playlists (20,000+ channels) can take up to a minute the first time.</li>
+        </ul>
+      </details>
+      <details>
+        <summary>The TV guide is empty</summary>
+        <p>Add your provider's guide (XMLTV) link in setup (Fire TV: <b>Edit sources</b>; phone: <b>Settings &rarr; Edit sources</b>). The guide loads in the background a minute or two after the channels. Some channels simply have no guide information.</p>
+      </details>
+      <details>
+        <summary>A channel won't play or keeps stopping</summary>
+        <ul>
+          <li>Try another channel. Individual channels from providers go offline at times.</li>
+          <li>Most providers limit how many streams can play at once. Stop watching on other devices.</li>
+          <li>Roku only: some stream formats aren't supported by Roku players, so a few channels may play on Fire TV but not on Roku.</li>
+        </ul>
+      </details>
+      <details>
+        <summary>Roku installer: "rejected the developer password"</summary>
+        <p>Run it again and type the password you created when turning on Developer Mode. Forgot it? Repeat the remote sequence from step 1 to set a new one.</p>
+      </details>
+      <details>
+        <summary>Roku installer: "Could not reach a Roku"</summary>
+        <ul>
+          <li>Double-check the IP address (Roku: <b>Settings &rarr; Network &rarr; About</b>).</li>
+          <li>Make sure the PC and the Roku are on the same Wi-Fi/network.</li>
+          <li>Make sure Developer Mode is on: open <code>http://&lt;Roku IP&gt;</code> in a browser on the PC. It should ask for a password.</li>
+        </ul>
+      </details>
+      <details>
+        <summary>Windows won't run the Roku installer</summary>
+        <p>On the "Windows protected your PC" screen, click <b>More info</b> &rarr; <b>Run anyway</b>. If your browser blocked the download, choose <b>Keep</b> in its downloads list.</p>
+      </details>
+      <details>
+        <summary>Picture-in-picture doesn't work on my phone</summary>
+        <p>Go to <b>Settings &rarr; Apps &rarr; CoxTV</b> and turn on <b>Picture-in-picture</b>.</p>
+      </details>
+    </section>
+  </main>
+
+  <footer class="wrap footer">
+    <p>CoxTV is a player app: it doesn't include any channels. Bring your own playlist from your TV service provider.</p>
+    <p><a href="https://github.com/bradenrcox17/CoxTV">Source code</a> &middot; <a href="https://github.com/bradenrcox17/CoxTV/releases/latest">Latest release</a></p>
+  </footer>
+</body>
+</html>

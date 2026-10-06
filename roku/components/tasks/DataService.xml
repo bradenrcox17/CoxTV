@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Long-running background service. Owns all playlist and EPG data so large lists never
+  get copied into the render thread. Requests and shared state go through m.global.bus
+  (a render-thread node created by MainScene); results come back on per-request reply
+  nodes (see svcCall in Utils.brs).
+-->
+<component name="DataService" extends="Task">
+  <script type="text/brightscript" uri="DataService.brs" />
+  <script type="text/brightscript" uri="pkg:/components/common/Parsers.brs" />
+  <script type="text/brightscript" uri="pkg:/components/common/Utils.brs" />
+</component>
