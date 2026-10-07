@@ -362,6 +362,8 @@ end sub
 sub refreshNow()
     content = m.list.content
     if content = invalid or content.getChildCount() = 0 then return
+    ' Game lists show the game (and the College Football list its kickoff), not what's on.
+    if isLiveCategory(m.current) and m.current <> "__fav__" and m.current <> "__recent__" then return
     n = content.getChildCount()
     if n > 600 then n = 600
     keys = []
@@ -425,7 +427,25 @@ sub showChannelOptions(ch as object)
     if dlg = invalid then dlg = CreateObject("roSGNode", "Dialog") ' Roku OS < 10
     dlg.title = ch.title
     if dlg.hasField("message") then dlg.message = ["Hidden channels can be brought back in Settings > Hidden channels."]
-    dlg.buttons = [favLabel, "Hide this channel", "Cancel"]
+    buttons = [favLabel, "Hide this channel"]
+    ' A game (Sports on now or a league): its teams can be starred.
+    m.optionTeams = []
+    m.optionSport = ""
+    if m.current = "__sports__" or Left(m.current, 11) = "__league__:" then
+        label = ch.description
+        if Left(label, 14) = "Your team  -  " then label = Mid(label, 15)
+        cut = Instr(1, label, "  -  ")
+        if cut > 0 then
+            league = Left(label, cut - 1)
+            m.optionSport = teamSportFor(league)
+            m.optionTeams = teamsInGame(Mid(label, cut + 5), league)
+            for each t in m.optionTeams
+                if t.mine then buttons.Push("Remove " + t.display + " from your " + teamSportLabel(m.optionSport) + " teams") else buttons.Push("Star " + t.display + " (" + teamSportLabel(m.optionSport) + " team)")
+            end for
+        end if
+    end if
+    buttons.Push("Cancel")
+    dlg.buttons = buttons
     dlg.observeFieldScoped("buttonSelected", "onOptionsButton")
     dlg.observeFieldScoped("wasClosed", "onOptionsClosed")
     m.optionsDialog = dlg
@@ -449,6 +469,13 @@ sub onOptionsButton()
     else if choice = 1 then
         setHidden(ch.id, true)
         focusIndex = m.list.itemFocused
+        loadCategory(m.current)
+        m.restoreIndex = focusIndex
+    else if choice >= 2 and choice - 2 < m.optionTeams.Count() then
+        t = m.optionTeams[choice - 2]
+        toggleTeamIn(m.optionSport, { key: t.key, display: t.display })
+        focusIndex = m.list.itemFocused
+        m.syncReply = svcCall({ type: "syncNow" }, "onTeamsSynced")
         loadCategory(m.current)
         m.restoreIndex = focusIndex
     end if
@@ -531,5 +558,5 @@ end sub
 sub onTeamsSynced(event as object)
     if m.syncReply = invalid or not event.getRoSGNode().isSameNode(m.syncReply) then return
     m.syncReply = invalid
-    if m.current = "__cfb__" then loadCategory("__cfb__")
+    if m.current = "__cfb__" or m.current = "__sports__" or Left(m.current, 11) = "__league__:" then loadCategory(m.current)
 end sub

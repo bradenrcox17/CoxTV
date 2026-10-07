@@ -66,7 +66,15 @@ class AppContainer(private val context: Context, private val appInfo: AppInfo) {
         if (startupDone) return
         startupDone = true
         appScope.launch {
-            if (!settings.config().isConfigured) return@launch
+            val cfg = settings.config()
+            if (!cfg.isConfigured) return@launch
+            // Linked, but not yet on the stream server's ready-made channel list (e.g. just
+            // updated from 1.0.8): load it once, which also confirms the server's guide fits.
+            if (link.token() != null && cfg.hasM3u && !cfg.hasXtream && settings.channelsEtag() == null) {
+                runCatching { repository.refreshChannels() }
+                    .onFailure { Log.w("CoxTV", "Ready-made channel list unavailable", it) }
+                if (settings.channelsEtag() != null) EpgRefreshWorker.refreshNow(context)
+            }
             val stale = System.currentTimeMillis() - settings.lastEpgRefresh() > 6 * 3_600_000L
             if (stale || repository.programCount() == 0) EpgRefreshWorker.refreshNow(context)
             // The channel list lives in Room, so launches are instant; re-sync it in the

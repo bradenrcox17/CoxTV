@@ -693,6 +693,29 @@ function buildList(category as dynamic, start as dynamic, count as dynamic) as o
             idxs = []
         end if
     end if
+    if labels <> invalid then
+        ' Games: favorite teams' games first (starred), keeping the league order otherwise.
+        teams = favoriteTeams()
+        mineIdx = []
+        mineLab = []
+        restIdx = []
+        restLab = []
+        for j = 0 to labels.Count() - 1
+            g = labels[j]
+            g.mine = isMyTeamGame(g.title, g.league, teams)
+            if g.mine then
+                mineIdx.Push(idxs[j])
+                mineLab.Push(g)
+            else
+                restIdx.Push(idxs[j])
+                restLab.Push(g)
+            end if
+        end for
+        mineIdx.Append(restIdx)
+        mineLab.Append(restLab)
+        idxs = mineIdx
+        labels = mineLab
+    end if
     listTotal = idxs.Count()
     if category = "__all__" and listTotal > 5000 then listTotal = 5000 ' keep "All" usable on huge playlists
 
@@ -720,7 +743,10 @@ function buildList(category as dynamic, start as dynamic, count as dynamic) as o
             nowStart = p[0]
             nowEnd = p[1]
         end if
-        if labels <> invalid then nowTitle = labels[j].league + "  -  " + labels[j].title
+        if labels <> invalid then
+            nowTitle = labels[j].league + "  -  " + labels[j].title
+            if labels[j].mine = true then nowTitle = "Your team  -  " + nowTitle
+        end if
         items.Push([pl.keys[i], pl.names[i], pl.urls[i], pl.logos[i], pl.groupNames[pl.grp[i]], pl.nums[i], favs.DoesExist(i.ToStr()), nowTitle, nowStart, nowEnd])
     end for
     return { category: category, items: items, start: s, listTotal: listTotal, total: allShown().Count() }

@@ -123,3 +123,37 @@ class DeviceLinkTest {
         assertEquals(null, DeviceLink.serverId("not a url"))
     }
 }
+
+class TeamsTest {
+    private fun t(display: String) = DeviceLink.Team(Teams.key(display), display)
+
+    @Test fun findsBothTeams() {
+        assertEquals(listOf("Pittsburgh Penguins", "Washington Capitals"), Teams.sides("NHL Hockey : Pittsburgh Penguins at Washington Capitals"))
+        assertEquals(listOf("Atl. Madrid", "Real Madrid"), Teams.sides("Atl. Madrid x Real Madrid – LaLiga"))
+        assertEquals(listOf("Florida", "Missouri"), Teams.sides("College Football : #8 Florida at #25 Missouri"))
+        assertEquals(listOf("Chiefs", "Raiders"), Teams.sides("Football: Chiefs vs. Raiders (Chiefs vs. Raiders)"))
+        assertEquals(listOf("Juventus", "Unicaja"), Teams.sides("Košarka - FIBA Liga šampiona: Juventus - Unicaja"))
+        assertEquals(emptyList<String>(), Teams.sides("Premier Padel Tennis : Germany, First Round"))
+    }
+
+    @Test fun matchesNicknamesNotOtherSchools() {
+        assertTrue(Teams.matches(t("Atlanta Braves"), "Braves"))
+        assertTrue(Teams.matches(t("Braves"), "Atlanta Braves"))
+        assertTrue(Teams.matches(t("Barcelona"), "FC Barcelona"))
+        assertTrue(Teams.matches(DeviceLink.Team("kennesawstate", "Kennesaw State"), "Kennesaw State"))
+        assertFalse(Teams.matches(t("Florida"), "Florida State"))
+        assertFalse(Teams.matches(t("Florida State"), "Florida"))
+        assertTrue(Teams.matches(t("Tennessee"), "Tennessee Volunteers"))
+        assertFalse(Teams.matches(t("Tennessee"), "Tennessee Tech"))
+        assertFalse(Teams.matches(t("Tennessee Titans"), "Tennessee Volunteers"))
+    }
+
+    @Test fun collegeTeamsSpanSports() {
+        val favs = mapOf("ncaaf" to listOf(t("Duke")), "mlb" to listOf(t("Atlanta Braves")), "soccer" to listOf(t("Argentina")))
+        assertTrue(Teams.isMine("College Basketball : Duke at North Carolina", "College Basketball", favs))
+        assertTrue(Teams.isMine("NCAA Football: Duke vs. SMU", "College Football", favs))
+        assertTrue(Teams.isMine("MLB Baseball : Los Angeles Dodgers at Atlanta Braves", "MLB", favs))
+        assertTrue(Teams.isMine("Fodbold: Venskabskampe: Argentina - Benin", "Soccer", favs))
+        assertFalse(Teams.isMine("NBA Basketball : Atlanta Hawks at Boston Celtics", "NBA", favs))
+    }
+}

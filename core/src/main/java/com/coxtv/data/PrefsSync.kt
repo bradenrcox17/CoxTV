@@ -99,7 +99,8 @@ class PrefsSync(
                             val merged = field.merge(fromJson(srvValue), local)
                             field.write(merged)
                             push.put(name, JSONObject().put("v", toJson(merged)).put("t", now))
-                            state.put(name, JSONObject().put("t", now).put("h", hash(merged)))
+                            // What this device actually has (entries it can't show stay on the server).
+                            state.put(name, JSONObject().put("t", now).put("h", hash(field.read())))
                         }
                         srvValue != null -> {
                             field.write(fromJson(srvValue))
@@ -112,7 +113,7 @@ class PrefsSync(
                     }
                 }
                 localHash != known.optString("h") -> {           // changed here since the last sync
-                    push.put(name, JSONObject().put("v", toJson(local)).put("t", now))
+                    push.put(name, JSONObject().put("v", toJson(keepUnknown(name, local, srvValue))).put("t", now))
                     state.put(name, JSONObject().put("t", now).put("h", localHash))
                 }
                 srvValue != null && srvT > known.optLong("t") -> { // changed on another device
@@ -126,6 +127,16 @@ class PrefsSync(
     }
 
     private suspend fun hasSavedCategories(): Boolean = settings.hasSavedCategories()
+
+    /**
+     * Favorites / hidden channels this device can't show (not in its playlist, or the list
+     * isn't fully loaded) are kept when it sends its own changes, so they aren't lost elsewhere.
+     */
+    private suspend fun keepUnknown(name: String, local: Any, server: Any?): Any {
+        if ((name != "favorites" && name != "hidden") || server == null) return local
+        val unknown = repo.unknownServerIds(strings(server))
+        return if (unknown.isEmpty()) local else (strings(local) + unknown).distinct()
+    }
 
     companion object {
         private const val TAG = "CoxTV"

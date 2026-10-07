@@ -187,7 +187,10 @@ function sportsLeagues() as object
     return ["NFL", "College Football", "NBA", "WNBA", "College Basketball", "MLB", "NHL", "Soccer", "Fighting", "Racing", "Golf", "Tennis", "Cricket", "Rugby", "Handball", "Volleyball", "Cycling", "Snooker & Darts", "College Sports", "Football", "Basketball", "Baseball", "Hockey", "Other"]
 end function
 
-' Favorite teams ({"ncaaf": [{key, display}]}), shared with tv.thecoxhome.com and the other apps.
+' Favorite teams, per sport ({"nfl": [...], "mlb": [...], "soccer": [...], "ncaaf": [...]}): shared
+' with tv.thecoxhome.com and the other apps. College teams share one list ("ncaaf", the key the
+' dashboard's College Football tab uses), so a school starred in any NCAA sport counts in all.
+' Same rules as the Android apps (Teams.kt) and the web player (watch.js).
 function favoriteTeams() as object
     v = ParseJson(regRead("teams", "{}"))
     if type(v) <> "roAssociativeArray" then v = {}
@@ -202,21 +205,141 @@ function isFavoriteTeam(key as string) as boolean
     return false
 end function
 
+' College Football guide (team keys come from the guide itself).
 sub toggleTeam(key as string, display as string)
+    toggleTeamIn("ncaaf", { key: key, display: display })
+end sub
+
+sub toggleTeamIn(sport as string, team as object)
     teams = favoriteTeams()
+    lst = teams[sport]
+    if type(lst) <> "roArray" then lst = []
     out = []
     found = false
-    for each t in teams.ncaaf
-        if t.key = key then
+    for each t in lst
+        if t.key = team.key or teamMatches(t, team.display) then
             found = true
         else
             out.Push(t)
         end if
     end for
-    if not found then out.Push({ key: key, display: display })
-    teams.ncaaf = out
+    if not found then out.Push({ key: team.key, display: team.display })
+    teams[sport] = out
     regWrite("teams", FormatJson(teams))
 end sub
+
+function teamSportFor(league as string) as string
+    if league = "NFL" then return "nfl"
+    if league = "NBA" then return "nba"
+    if league = "WNBA" then return "wnba"
+    if league = "MLB" then return "mlb"
+    if league = "NHL" then return "nhl"
+    if league = "Soccer" then return "soccer"
+    if league = "College Football" or league = "College Basketball" or league = "College Sports" then return "ncaaf"
+    return LCase(league)
+end function
+
+function teamSportLabel(sport as string) as string
+    if sport = "ncaaf" then return "NCAA"
+    if sport = "soccer" then return "Soccer"
+    return UCase(sport)
+end function
+
+function teamKey(name as string) as string
+    return CreateObject("roRegex", "[^a-z0-9]", "").ReplaceAll(LCase(name), "")
+end function
+
+' The two teams in a game title ("NHL Hockey : Pittsburgh Penguins at Washington Capitals").
+function teamSides(title as string) as object
+    t = CreateObject("roRegex", "\([^)]*\)", "").ReplaceAll(title, " ").Trim()
+    sep = CreateObject("roRegex", "\s+(?:vs\.?|v\.?|versus|at|@|x|-|–)\s+", "i")
+    c = 0
+    for k = Len(t) to 1 step -1
+        if Mid(t, k, 1) = ":" then
+            c = k
+            exit for
+        end if
+    end for
+    if c > 0 and sep.IsMatch(Mid(t, c + 1)) then t = Mid(t, c + 1)
+    parts = sep.Split(t)
+    if parts.Count() < 2 then return []
+    tail = CreateObject("roRegex", "\s+[-–|]\s+.*$", "")
+    rank = CreateObject("roRegex", "^#\d+\s+", "")
+    out = []
+    for each p in [parts[0], parts[1]]
+        s = rank.ReplaceAll(tail.ReplaceAll(p.Trim(), ""), "").Trim()
+        if Len(s) >= 2 then out.Push(s)
+    end for
+    if out.Count() <> 2 then return []
+    return out
+end function
+
+function teamWords(s as string) as object
+    out = {}
+    for each w in CreateObject("roRegex", "[\s,.;:/()'-]+", "").Split(LCase(s))
+        if w <> "" then out[w] = true
+    end for
+    return out
+end function
+
+' Whether a game's team name means this favorite ("Braves" = "Atlanta Braves", but "Florida" is
+' not "Florida State").
+function teamMatches(team as object, side as string) as boolean
+    if team.display = invalid then return false
+    if teamKey(team.display) = teamKey(side) or team.key = teamKey(side) then return true
+    t = teamWords(team.display)
+    s = teamWords(side)
+    if t.Count() = 0 or s.Count() = 0 then return false
+    sInT = true
+    for each w in s
+        if not t.DoesExist(w) then sInT = false
+    end for
+    other = { "state": true, "st": true, "tech": true, "a&m": true, "am": true, "international": true, "southern": true, "northern": true, "eastern": true, "western": true, "central": true, "christian": true, "poly": true, "university": true, "college": true, "atlantic": true }
+    if sInT
+        for each w in t
+            if not s.DoesExist(w) and other.DoesExist(w) then return false
+        end for
+        return true
+    end if
+    for each w in t
+        if not s.DoesExist(w) then return false
+    end for
+    for each w in s
+        if not t.DoesExist(w) and other.DoesExist(w) then return false
+    end for
+    return true
+end function
+
+' Teams in a game with whether each is already a favorite: [{key, display, mine}].
+function teamsInGame(title as string, league as string) as object
+    lst = favoriteTeams()[teamSportFor(league)]
+    out = []
+    for each side in teamSides(title)
+        found = invalid
+        if type(lst) = "roArray" then
+            for each t in lst
+                if found = invalid and teamMatches(t, side) then found = t
+            end for
+        end if
+        if found <> invalid then
+            out.Push({ key: found.key, display: found.display, mine: true })
+        else
+            out.Push({ key: teamKey(side), display: side, mine: false })
+        end if
+    end for
+    return out
+end function
+
+function isMyTeamGame(title as string, league as string, teams as object) as boolean
+    lst = teams[teamSportFor(league)]
+    if type(lst) <> "roArray" or lst.Count() = 0 then return false
+    for each side in teamSides(title)
+        for each t in lst
+            if teamMatches(t, side) then return true
+        end for
+    end for
+    return false
+end function
 
 ' ---- Recently watched (newest first) and hidden channels: lists of channel keys ----
 

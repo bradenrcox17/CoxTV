@@ -364,7 +364,24 @@ function syncPrefs() as boolean
                 state[name] = { t: nowMs, h: localHash }
             end if
         else if localHash <> known.h then
-            push[name] = { v: localValue, t: nowMs }
+            value = localValue
+            if (name = "favorites" or name = "hidden") and type(srv) = "roAssociativeArray" and type(srv.v) = "roArray" then
+                ' Keep entries this Roku can't show (not in its playlist), so they aren't lost elsewhere.
+                idx = serverIndex()
+                value = []
+                seen = {}
+                for each v in localValue
+                    value.Push(v)
+                    seen[v] = true
+                end for
+                for each v in srv.v
+                    if not idx.DoesExist(v) and not seen.DoesExist(v) then
+                        value.Push(v)
+                        seen[v] = true
+                    end if
+                end for
+            end if
+            push[name] = { v: value, t: nowMs }
             state[name] = { t: nowMs, h: localHash }
         else if type(srv) = "roAssociativeArray" and srvT > known.t then
             syncWrite(name, srv.v)

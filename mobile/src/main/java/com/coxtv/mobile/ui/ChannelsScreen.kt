@@ -47,6 +47,7 @@ import com.coxtv.AppContainer
 import com.coxtv.data.Categories
 import com.coxtv.data.CategoryExtras
 import com.coxtv.data.DeviceLink
+import com.coxtv.data.Teams
 import com.coxtv.data.db.Channel
 import com.coxtv.data.db.ProgramEntity
 import com.coxtv.mobile.ui.theme.CoxColors
@@ -94,6 +95,7 @@ fun ChannelsScreen(
     val cat = category ?: Categories.ALL
     val visible = remember(all, cat, extras) { Categories.filter(all, cat, extras) }
     val cfbGuide by repo.cfbGuide.collectAsStateWithLifecycle(null)
+    val allTeams by repo.allTeams.collectAsStateWithLifecycle(emptyMap())
     val counts = remember(all, extras, cfbGuide) {
         all.groupingBy { it.groupName }.eachCount() +
             Categories.LEAGUE_KEYS.associateWith { 0 } +
@@ -153,7 +155,8 @@ fun ChannelsScreen(
                         program = ch.epgId?.let { nowPlaying[it] },
                         label = when {
                             cat == Categories.SPORTS -> extras.sportsLabels[ch.id]
-                            Categories.leagueOf(cat) != null -> extras.sports.firstOrNull { it.channel.id == ch.id }?.title
+                            Categories.leagueOf(cat) != null -> extras.sports.firstOrNull { it.channel.id == ch.id }
+                                ?.let { (if (it.mine) "★ " else "") + it.title }
                             else -> null
                         },
                         now = now,
@@ -162,6 +165,11 @@ fun ChannelsScreen(
                         onHide = { scope.launch { repo.setHidden(ch, true) } },
                         tvs = tvs,
                         onCast = { tv -> castChannel(container, context, tv, ch) },
+                        teams = (if (cat == Categories.SPORTS || Categories.leagueOf(cat) != null)
+                            extras.sports.firstOrNull { it.channel.id == ch.id } else null)
+                            ?.let { g -> Teams.inGame(g.title, g.league, allTeams).map { (t, mine) -> Triple(t, mine, Teams.sportFor(g.league)) } }
+                            .orEmpty(),
+                        onToggleTeam = { team, sport -> scope.launch { repo.toggleTeam(team, sport) } },
                     )
                 }
             }
@@ -181,6 +189,8 @@ private fun ChannelRow(
     onHide: () -> Unit,
     tvs: List<DeviceLink.Tv>,
     onCast: (DeviceLink.Tv) -> Unit,
+    teams: List<Triple<DeviceLink.Team, Boolean, String>> = emptyList(),
+    onToggleTeam: (DeviceLink.Team, String) -> Unit = { _, _ -> },
 ) {
     var menu by remember { mutableStateOf(false) }
     Box {
@@ -238,6 +248,12 @@ private fun ChannelRow(
                 DropdownMenuItem(
                     text = { Text("Play on ${tv.name}") },
                     onClick = { menu = false; onCast(tv) },
+                )
+            }
+            teams.forEach { (team, mine, sport) ->
+                DropdownMenuItem(
+                    text = { Text((if (mine) "★  Remove " else "☆  Star ") + team.display + " (" + Teams.sportLabel(sport) + " team)") },
+                    onClick = { menu = false; onToggleTeam(team, sport) },
                 )
             }
         }

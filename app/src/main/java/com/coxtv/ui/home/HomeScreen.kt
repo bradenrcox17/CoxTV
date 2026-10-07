@@ -51,6 +51,7 @@ import androidx.tv.material3.Text
 import com.coxtv.AppContainer
 import com.coxtv.data.Categories
 import com.coxtv.data.CategoryExtras
+import com.coxtv.data.Teams
 import com.coxtv.data.db.Channel
 import com.coxtv.data.db.ProgramEntity
 import com.coxtv.ui.components.ChannelMenu
@@ -90,7 +91,10 @@ fun HomeScreen(
     var menuFor by remember { mutableStateOf<Channel?>(null) }
     // After hiding a channel, focus moves to the next one in the list (not the sidebar).
     var focusAfterHide by remember { mutableStateOf<String?>(null) }
+    // After starring a team its games move to the top: show them (and keep focus in the list).
+    var teamToggled by remember { mutableStateOf(false) }
     val cfbGuide by repo.cfbGuide.collectAsStateCompat(null)
+    val allTeams by repo.allTeams.collectAsStateCompat(emptyMap())
     val epgUpdating by remember { EpgRefreshWorker.isRunning(context) }.collectAsStateCompat(false)
     val lastEpg by container.settings.lastEpgRefresh.collectAsStateCompat(0L)
 
@@ -321,7 +325,8 @@ fun HomeScreen(
                             program = program,
                             label = when {
                                 category == Categories.SPORTS -> extras.sportsLabels[ch.id]
-                                Categories.leagueOf(category) != null -> extras.sports.firstOrNull { it.channel.id == ch.id }?.title
+                                Categories.leagueOf(category) != null -> extras.sports.firstOrNull { it.channel.id == ch.id }
+                                    ?.let { (if (it.mine) "★ " else "") + it.title }
                                 else -> null
                             },
                             now = now,
@@ -336,8 +341,17 @@ fun HomeScreen(
     }
     // On top of everything: channel options (☰ Menu / hold OK).
     menuFor?.let { ch ->
+        // A game (Sports on now or a league): its teams can be starred.
+        val game = if (category == Categories.SPORTS || Categories.leagueOf(category) != null)
+            extras.sports.firstOrNull { it.channel.id == ch.id } else null
         ChannelMenu(
             channel = ch,
+            teams = game?.let { Teams.inGame(it.title, it.league, allTeams) }.orEmpty(),
+            teamSport = game?.let { Teams.sportFor(it.league) }.orEmpty(),
+            onToggleTeam = { team ->
+                teamToggled = true
+                game?.let { g -> scope.launch { repo.toggleTeam(team, Teams.sportFor(g.league)) } }
+            },
             onFavorite = { scope.launch { repo.toggleFavorite(ch) } },
             onHide = {
                 val i = visible.indexOfFirst { it.id == ch.id }
@@ -348,7 +362,17 @@ fun HomeScreen(
                 menuFor = null
                 val next = focusAfterHide
                 focusAfterHide = null
+                val resorted = teamToggled
+                teamToggled = false
                 scope.launch {
+                    if (resorted) {
+                        delay(400) // the list re-sorts once the change is saved
+                        listState.scrollToItem(0)
+                        focusTargetId = visibleNow.firstOrNull()?.id
+                        withFrameNanos { }
+                        withFrameNanos { }
+                        if (runCatching { lastChannelFocus.requestFocus() }.isSuccess) return@launch
+                    }
                     if (next != null) {
                         // Wait for the hidden row to leave the list, then focus its neighbour.
                         for (attempt in 0 until 30) {

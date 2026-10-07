@@ -100,12 +100,14 @@ object Categories {
 }
 
 /** A live game for "Sports on now". */
-data class SportsGame(val channel: Channel, val title: String, val league: String, val endMs: Long)
+data class SportsGame(val channel: Channel, val title: String, val league: String, val endMs: Long, val mine: Boolean = false)
 
 /** Lists for the built-in categories that don't come straight from the channel table. */
 data class CategoryExtras(val recent: List<Channel>, val sports: List<SportsGame>) {
     /** Row text for the Sports category: "NHL · Senators vs. Bruins". */
-    val sportsLabels: Map<String, String> = sports.associate { it.channel.id to "${it.league} · ${it.title}" }
+    val sportsLabels: Map<String, String> = sports.associate {
+        it.channel.id to (if (it.mine) "★ " else "") + "${it.league} · ${it.title}"
+    }
 
     companion object {
         val EMPTY = CategoryExtras(emptyList(), emptyList())
@@ -182,8 +184,11 @@ class TvRepository(
      * which programmes are live); otherwise the app's own rules.
      */
     val sports: Flow<List<SportsGame>> by lazy {
-        combine(grouping, nowPlaying, serverSports) { g, now, server ->
-            if (server != null) fromServer(g, server) else findGames(g.channels, now)
+        combine(grouping, nowPlaying, serverSports, settings.teams) { g, now, server, teamsJson ->
+            val games = if (server != null) fromServer(g, server) else findGames(g.channels, now)
+            // Favorite teams' games first (and starred), keeping the league order otherwise.
+            val teams = Teams.parse(teamsJson)
+            games.map { it.copy(mine = Teams.isMine(it.title, it.league, teams)) }.sortedBy { if (it.mine) 0 else 1 }
         }.flowOn(Dispatchers.Default)
     }
 
@@ -232,6 +237,9 @@ class TvRepository(
 
     /** Favorite teams for a sport ("ncaaf"), shared with tv.thecoxhome.com and the other apps. */
     fun favoriteTeams(sport: String = "ncaaf"): Flow<List<DeviceLink.Team>> = settings.teams.map { teamsOf(it, sport) }
+
+    /** Every favorite team, by sport. */
+    val allTeams: Flow<Map<String, List<DeviceLink.Team>>> = settings.teams.map(Teams::parse)
 
     private fun teamsOf(json: String, sport: String): List<DeviceLink.Team> = runCatching {
         val a = org.json.JSONObject(json).optJSONArray(sport) ?: return@runCatching emptyList()
@@ -283,6 +291,13 @@ class TvRepository(
         val byServerId = HashMap<String, String>()
         for (c in db.channels().allEntities()) DeviceLink.serverId(c.streamUrl)?.let { byServerId.putIfAbsent(it, c.id) }
         return serverIds.mapNotNull { byServerId[it] }.distinct()
+    }
+
+    /** Stream server ids this device's playlist doesn't have. */
+    suspend fun unknownServerIds(serverIds: List<String>): List<String> {
+        val known = HashSet<String>()
+        for (c in db.channels().allEntities()) DeviceLink.serverId(c.streamUrl)?.let { known += it }
+        return serverIds.filter { it !in known }
     }
 
     suspend fun applySharedFavorites(serverIds: List<String>) = db.channels().replaceFavorites(localIdsFor(serverIds))
@@ -529,6 +544,8 @@ class TvRepository(
                 return@withContext count
             }
         }
+        // Not on the server's list (any more): its ready-made guide may not fit this playlist.
+        settings.setChannelsEtag(null)
         if (cfg.hasM3u) {
             val result = http.getStream(cfg.m3uUrl.trim()) { M3uParser.parse(it.bufferedReader()) }
             detectedEpg = result.epgUrl
@@ -623,8 +640,8 @@ class TvRepository(
     private suspend fun doRefreshEpg(): Int {
         val cfg = settings.config()
         if (!cfg.isConfigured) return 0
-        if (link.token() != null) {
-            // Linked: the stream server's ready-made 36-hour guide (a few MB, already matched
+        if (link.token() != null && settings.channelsEtag() != null) {
+            // Linked and on the server's channel list (so the same playlist): the ready-made 36-hour guide (a few MB, already matched
             // to the playlist) instead of downloading and parsing the provider's ~100 MB XMLTV.
             try {
                 return importServerGuide()
