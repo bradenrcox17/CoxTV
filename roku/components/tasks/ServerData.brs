@@ -155,7 +155,12 @@ function cfbMatchup(g as object) as string
     if g.matchup <> invalid then text = g.matchup
     ranks = g.ranks
     if type(ranks) <> "roArray" then return text
-    re = CreateObject("roRegex", "\s+(vs\.?|at|@)\s+", "i")
+    ranked = false
+    for each r in ranks
+        if r <> invalid and type(r) <> "roInvalid" then ranked = true
+    end for
+    if not ranked then return text
+    re = CreateObject("roRegex", "\s+(?:vs\.?|at|@)\s+", "i")
     parts = re.Split(text)
     sepMatch = re.Match(text)
     if parts.Count() < 2 or sepMatch.Count() = 0 then return text
@@ -189,7 +194,6 @@ function cfbList() as object
     for each r in cfbGames()
         g = r.game
         title = cfbMatchup(g)
-        if r.mine then title = "* " + title
         status = cfbStatus(g)
         if r.key = "" then status = status + "  (no channel found yet)"
         url = ""
@@ -268,7 +272,10 @@ sub syncWrite(name as string, value as dynamic)
             end if
         end for
         if name = "favorites" then regWrite("favorites", keys.Join(",")) else regWrite("hidden", keys.Join(","))
-        if name = "hidden" then resetListCaches()
+        if name = "hidden" then
+            resetListCaches()
+            m.bus.channelCount = allShown().Count() ' after hiding
+        end if
     else if name = "categories" then
         if type(value) = "roArray" and value.Count() > 0 then setCategoryOrder(value)
     else if name = "teams" then

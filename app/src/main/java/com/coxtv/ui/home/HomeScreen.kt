@@ -212,7 +212,12 @@ fun HomeScreen(
             }
             LazyColumn(
                 state = sideState,
-                modifier = Modifier.weight(1f).focusRestorer().focusRequester(sideFocus),
+                modifier = Modifier.weight(1f).focusRestorer().focusRequester(sideFocus)
+                    // Right always goes into the list (the College Football guide may not reach this far down).
+                    .onPreviewKeyEvent {
+                        it.type == KeyEventType.KeyDown && it.key == Key.DirectionRight &&
+                            runCatching { listFocus.requestFocus() }.isSuccess
+                    },
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 // Focusing an action restores the opened category, so passing over categories on
@@ -245,7 +250,7 @@ fun HomeScreen(
                             pendingCategory = null
                             selected = key
                             anchorCategory = key
-                            runCatching { listFocus.requestFocus() }
+                            scope.launch { withFrameNanos { }; withFrameNanos { }; runCatching { listFocus.requestFocus() } }
                         },
                     )
                 }

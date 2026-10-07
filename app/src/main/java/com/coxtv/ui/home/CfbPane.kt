@@ -97,15 +97,18 @@ fun CfbPane(
     val touch = LocalIsTouch.current
 
     val g = guide
+    // A Box, so the teams menu draws over the list (not below it).
+    Box(Modifier.fillMaxSize()) {
     when {
         !linked -> Empty("The College Football guide comes from tv.thecoxhome.com.\nSet this device up with a code (Edit sources > Enter setup code) to see it.")
         g == null -> Empty("Loading the College Football guide…")
         g.rows.isEmpty() -> Empty("No college football games this week.")
         else -> LazyColumn(
             state = listState,
-            modifier = Modifier.fillMaxSize().focusRestorer().focusRequester(listFocus),
+            modifier = Modifier.fillMaxSize().focusRestorer(),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
+            val firstKey = sections(g.rows).firstOrNull()?.second?.firstOrNull()?.let { it.game.matchup + it.game.kickoffSort }
             for ((head, rows) in sections(g.rows)) {
                 item(key = "h:$head") {
                     Text(
@@ -118,6 +121,8 @@ fun CfbPane(
                 items(rows, key = { "g:" + it.game.matchup + it.game.kickoffSort }) { row ->
                     GameRow(
                         row = row,
+                        // Entering the list (Right from the sidebar) lands on the first game.
+                        modifier = if (row.game.matchup + row.game.kickoffSort == firstKey) Modifier.focusRequester(listFocus) else Modifier,
                         onClick = {
                             val ch = row.channel
                             if (ch != null) onPlay(ch.id) else onStatus("No channel is showing ${row.game.matchup} yet")
@@ -146,15 +151,16 @@ fun CfbPane(
             onDismiss = { teamsFor = null; runCatching { listFocus.requestFocus() } },
         )
     }
+    }
 }
 
 @Composable
-private fun GameRow(row: TvRepository.CfbRow, onClick: () -> Unit, onOptions: () -> Unit) {
+private fun GameRow(row: TvRepository.CfbRow, modifier: Modifier, onClick: () -> Unit, onOptions: () -> Unit) {
     FocusTile(
         onClick = onClick,
         onLongClick = onOptions,
         focusedScale = 1.01f,
-        modifier = Modifier.fillMaxWidth().height(62.dp).onPreviewKeyEvent {
+        modifier = modifier.fillMaxWidth().height(62.dp).onPreviewKeyEvent {
             if (it.type == KeyEventType.KeyDown && it.key == Key.Menu) { onOptions(); true } else false
         },
     ) {
