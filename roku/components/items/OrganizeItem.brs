@@ -11,14 +11,14 @@ end sub
 sub onContent()
     ' Rows are moved by swapping data between nodes, so re-render whenever any of it changes.
     if m.observed <> invalid then
-        for each f in ["title", "checked", "moving"]
+        for each f in ["title", "checked", "moving", "shortDescriptionLine1"]
             m.observed.unobserveFieldScoped(f)
         end for
     end if
     c = m.top.itemContent
     m.observed = c
     if c = invalid then return
-    for each f in ["title", "checked", "moving"]
+    for each f in ["title", "checked", "moving", "shortDescriptionLine1"]
         c.observeFieldScoped(f, "render")
     end for
     render()

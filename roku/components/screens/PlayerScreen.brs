@@ -29,6 +29,7 @@ sub init()
     m.badge = m.top.findNode("badge")
     m.badgeText = m.top.findNode("badgeText")
     m.badgeTimer = m.top.findNode("badgeTimer")
+    m.recentTimer = m.top.findNode("recentTimer")
 
     m.video.observeField("state", "onVideoState")
     m.miniList.observeField("itemSelected", "onMiniSelected")
@@ -39,6 +40,7 @@ sub init()
     m.clockTimer.observeField("fire", "onClockTick")
     m.stallTimer.observeField("fire", "onStall")
     m.badgeTimer.observeField("fire", "showBadgeNow")
+    m.recentTimer.observeField("fire", "onRecentTimer")
     m.top.observeField("params", "onParams")
     m.top.observeField("active", "onActive")
     m.top.observeField("closed", "onClosed")
@@ -150,6 +152,7 @@ sub tune(index as integer, immediate as boolean)
     m.retryTimer.control = "stop"
     m.stallTimer.control = "stop"
     hideBadge()
+    m.recentTimer.control = "stop"
     updateInfo()
     showInfo()
     m.nowNextReply = svcCall({ type: "nowNext", key: m.channel.id }, "onNowNext")
@@ -171,6 +174,9 @@ sub startPlayback()
     m.cand = 0
     m.hasPlayed = false
     m.reconnects = 0
+    m.altUrls = invalid  ' other copies of this channel, fetched only if it won't start
+    m.altIndex = 0
+    m.altReply = invalid
     m.errorBox.visible = false
     playCandidate()
     regWrite("lastKey", ch.id)
@@ -216,6 +222,10 @@ sub onVideoState()
         m.loading.visible = false
         m.errorBox.visible = false
         hideBadge()
+        if not m.hasPlayed then
+            m.recentTimer.control = "stop"
+            m.recentTimer.control = "start"
+        end if
         m.hasPlayed = true
         m.reconnects = 0
     else if state = "buffering" then
@@ -238,9 +248,7 @@ sub onVideoState()
             m.cand = m.cand + 1 ' fall back, e.g. from the .m3u8 guess to the original .ts URL
             playCandidate()
         else
-            m.loading.visible = false
-            hideBadge()
-            showError("Can't play " + m.channel.title, m.video.errorMsg + " (error " + m.video.errorCode.ToStr() + ")")
+            failOrTryNextCopy("Can't play " + m.channel.title, m.video.errorMsg + " (error " + m.video.errorCode.ToStr() + ")")
         end if
     else if state = "finished" then
         ' Live streams should never finish; the provider dropped us. Reconnect.
@@ -262,8 +270,7 @@ sub onStall()
         playCandidate()
     else
         m.video.control = "stop"
-        m.loading.visible = false
-        showError("Can't play " + m.channel.title, "The channel didn't start. It may be offline right now.")
+        failOrTryNextCopy("Can't play " + m.channel.title, "The channel didn't start. It may be offline right now.")
     end if
 end sub
 
@@ -482,3 +489,42 @@ function onKeyEvent(key as string, press as boolean) as boolean
     end if
     return true
 end function
+
+' ---------------------------------------------------------------- copies of a channel
+
+' Every way to play this URL failed before it ever played: try the channel's next copy
+' (HD / FHD / backup feeds folded into one entry), else show the error.
+sub failOrTryNextCopy(title as string, msg as string)
+    m.pendingError = { title: title, msg: msg }
+    if m.altUrls = invalid then
+        if m.altReply = invalid then m.altReply = svcCall({ type: "sources", key: m.channel.id }, "onSources")
+        return ' continues in onSources
+    end if
+    if m.altIndex < m.altUrls.Count() then
+        url = m.altUrls[m.altIndex]
+        m.altIndex = m.altIndex + 1
+        print "CoxTV: trying copy "; m.altIndex; " of "; m.altUrls.Count()
+        m.candidates = streamCandidates(url)
+        m.cand = 0
+        playCandidate()
+        return
+    end if
+    m.loading.visible = false
+    hideBadge()
+    showError(title, msg)
+end sub
+
+sub onSources(event as object)
+    if m.altReply = invalid or not event.getRoSGNode().isSameNode(m.altReply) then return
+    m.altReply = invalid
+    data = event.getData()
+    if m.channel = invalid or data.key <> m.channel.id then return
+    m.altUrls = data.urls
+    if m.altUrls = invalid then m.altUrls = []
+    failOrTryNextCopy(m.pendingError.title, m.pendingError.msg)
+end sub
+
+' Counts as recently watched once it has played for a few seconds.
+sub onRecentTimer()
+    if m.channel <> invalid and m.video.state = "playing" then addRecent(m.channel.id)
+end sub

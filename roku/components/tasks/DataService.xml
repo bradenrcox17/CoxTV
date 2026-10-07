@@ -8,5 +8,6 @@
 <component name="DataService" extends="Task">
   <script type="text/brightscript" uri="DataService.brs" />
   <script type="text/brightscript" uri="pkg:/components/common/Parsers.brs" />
+  <script type="text/brightscript" uri="pkg:/components/common/Groups.brs" />
   <script type="text/brightscript" uri="pkg:/components/common/Utils.brs" />
 </component>

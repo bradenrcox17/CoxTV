@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -35,10 +36,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.coxtv.AppContainer
+import com.coxtv.data.SetupCodes
 import com.coxtv.data.SourceConfig
 import com.coxtv.mobile.ui.theme.CoxColors
 import kotlinx.coroutines.launch
@@ -51,6 +54,7 @@ fun SetupScreen(container: AppContainer, canGoBack: Boolean, onBack: () -> Unit,
     var server by rememberSaveable { mutableStateOf("") }
     var user by rememberSaveable { mutableStateOf("") }
     var pass by rememberSaveable { mutableStateOf("") }
+    var code by rememberSaveable { mutableStateOf("") }
     var showXtream by rememberSaveable { mutableStateOf(false) }
     var loaded by rememberSaveable { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
@@ -64,6 +68,29 @@ fun SetupScreen(container: AppContainer, canGoBack: Boolean, onBack: () -> Unit,
             server = c.xtreamServer; user = c.xtreamUser; pass = c.xtreamPass
             showXtream = c.hasXtream
             loaded = true
+        }
+    }
+
+    fun useCode() {
+        if (SetupCodes.normalize(code).length != 6) {
+            isError = true
+            message = "Enter the 6-character code from tv.thecoxhome.com (Set up a TV), like K7P-2QX."
+            return
+        }
+        busy = true
+        isError = false
+        message = "Loading channels… large playlists can take a minute."
+        scope.launch {
+            try {
+                val count = container.repository.connectWithSetupCode(code)
+                message = "Loaded $count channels"
+                onConnected()
+            } catch (e: Exception) {
+                isError = true
+                message = e.message ?: e.javaClass.simpleName
+            } finally {
+                busy = false
+            }
         }
     }
 
@@ -107,6 +134,24 @@ fun SetupScreen(container: AppContainer, canGoBack: Boolean, onBack: () -> Unit,
             }
             Text("Connect your TV service", style = MaterialTheme.typography.titleMedium, color = CoxColors.TextDim)
             Spacer(Modifier.height(4.dp))
+
+            // Easiest: a one-time code from tv.thecoxhome.com instead of typing links.
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value = code,
+                    onValueChange = { code = it.take(12) },
+                    label = { Text("Setup code") },
+                    placeholder = { Text("K7P-2QX") },
+                    supportingText = { Text("From tv.thecoxhome.com > Watch > Set up a TV") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters, imeAction = ImeAction.Go, autoCorrectEnabled = false),
+                    keyboardActions = KeyboardActions(onGo = { if (!busy) useCode() }),
+                    modifier = Modifier.weight(1f),
+                )
+                Button(onClick = { if (!busy) useCode() }, enabled = !busy) { Text("Use code") }
+            }
+            HorizontalDivider()
+            Text("Or enter your links yourself", style = MaterialTheme.typography.titleSmall, color = CoxColors.TextDim)
 
             OutlinedTextField(
                 value = m3u,

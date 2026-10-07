@@ -73,6 +73,7 @@ import androidx.media3.ui.PlayerView
 import coil3.compose.AsyncImage
 import com.coxtv.AppContainer
 import com.coxtv.data.Categories
+import com.coxtv.data.CategoryExtras
 import com.coxtv.data.db.Channel
 import com.coxtv.data.db.ProgramEntity
 import com.coxtv.mobile.MainActivity
@@ -99,9 +100,14 @@ fun PlayerScreen(
     val inPip by activity.inPip
 
     val allChannels by repo.channels.collectAsStateWithLifecycle(null)
-    val zapList = remember(allChannels, category) {
+    val extras by repo.categoryExtras.collectAsStateWithLifecycle(CategoryExtras.EMPTY)
+    // Recent reorders itself as you watch; swipe through it in the order it had when you came in.
+    var recentAtEntry by remember { mutableStateOf<List<Channel>?>(null) }
+    if (recentAtEntry == null && extras.recent.isNotEmpty()) recentAtEntry = extras.recent
+    val zapList = remember(allChannels, category, extras, recentAtEntry) {
         val all = allChannels.orEmpty()
-        Categories.filter(all, category).ifEmpty { all }
+        val list = if (category == Categories.RECENT) recentAtEntry.orEmpty() else Categories.filter(all, category, extras)
+        list.ifEmpty { all }
     }
     var currentId by remember { mutableStateOf(channelId) }
     val current = remember(allChannels, currentId) { allChannels?.firstOrNull { it.id == currentId } }
@@ -113,6 +119,11 @@ fun PlayerScreen(
     var retries by remember { mutableIntStateOf(0) }
     var retryNonce by remember { mutableIntStateOf(0) }
     var firstTune by remember { mutableStateOf(true) }
+    // Copies of this channel (HD/FHD/backup feeds): if one won't start, the next is tried.
+    var sources by remember { mutableStateOf<List<Channel>>(emptyList()) }
+    var sourceIndex by remember { mutableIntStateOf(0) }
+    var sourcePlayed by remember { mutableStateOf(false) }
+    var playingSince by remember { mutableStateOf(0L) }
 
     // Fullscreen landscape while watching; restore when leaving the player.
     DisposableEffect(Unit) {
@@ -138,6 +149,8 @@ fun PlayerScreen(
                 if (state == Player.STATE_READY) {
                     error = null
                     retries = 0
+                    sourcePlayed = true
+                    if (playingSince == 0L) playingSince = System.currentTimeMillis()
                 }
             }
 
@@ -145,6 +158,10 @@ fun PlayerScreen(
                 if (e.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW) {
                     player.seekToDefaultPosition()
                     player.prepare()
+                    return
+                }
+                if (!sourcePlayed && sourceIndex + 1 < sources.size) {
+                    sourceIndex++
                     return
                 }
                 error = e.errorCodeName.removePrefix("ERROR_CODE_").replace('_', ' ').lowercase()
@@ -199,14 +216,36 @@ fun PlayerScreen(
         flashOverlay()
     }
 
-    // Tune (debounced so quick swipes skim channels without starting every stream).
-    LaunchedEffect(current?.streamUrl, retryNonce) {
+    // The id may be a folded copy (e.g. last watched before copies were combined).
+    LaunchedEffect(channelId) {
+        val shown = repo.shownId(channelId)
+        if (shown != currentId && currentId == channelId) currentId = shown
+    }
+
+    LaunchedEffect(current?.id) {
+        sources = current?.let { repo.sourcesFor(it) }.orEmpty()
+        sourceIndex = 0
+    }
+
+    // Counts as recently watched once it has actually played for a few seconds.
+    LaunchedEffect(current?.id, playingSince) {
         val ch = current ?: return@LaunchedEffect
+        if (playingSince == 0L) return@LaunchedEffect
+        delay(5_000)
+        repo.addRecent(ch)
+    }
+
+    // Tune (debounced so quick swipes skim channels without starting every stream).
+    LaunchedEffect(current?.streamUrl, retryNonce, sourceIndex) {
+        val channel = current ?: return@LaunchedEffect
+        val ch = sources.getOrNull(sourceIndex)?.takeIf { sources.first().id == channel.id } ?: channel
         if (!firstTune) delay(350)
         firstTune = false
         buffering = true
+        sourcePlayed = false
+        playingSince = 0L
         player.playChannel(ch)
-        container.settings.setLastWatched(ch.id, category)
+        container.settings.setLastWatched(channel.id, category)
     }
 
     LaunchedEffect(showOverlay, overlayNonce) {

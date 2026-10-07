@@ -69,6 +69,7 @@ fun OrganizeScreen(container: AppContainer, onBack: () -> Unit) {
         PrimaryTabRow(selectedTabIndex = tab) {
             Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("Categories") })
             Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("Favorites order") })
+            Tab(selected = tab == 2, onClick = { tab = 2 }, text = { Text("Hidden") })
         }
 
         if (tab == 0) {
@@ -100,6 +101,8 @@ fun OrganizeScreen(container: AppContainer, onBack: () -> Unit) {
                     }
                 }
             }
+        } else if (tab == 2) {
+            HiddenList(container)
         } else if (channels != null && favorites.isEmpty()) {
             Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
                 Text(
@@ -153,4 +156,35 @@ private fun CategoryRow(key: String, count: Int?, actions: @Composable () -> Uni
         supportingContent = count?.let { { Text("$it channels", color = CoxColors.TextDim) } },
         trailingContent = { Row { actions() } },
     )
+}
+
+@Composable
+private fun HiddenList(container: AppContainer) {
+    val repo = container.repository
+    val scope = rememberCoroutineScope()
+    val hidden by repo.hiddenChannels.collectAsStateWithLifecycle(null)
+    val list = hidden ?: return
+    if (list.isEmpty()) {
+        Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
+            Text(
+                "No hidden channels.\nPress and hold a channel in the list to hide it.",
+                textAlign = TextAlign.Center,
+                color = CoxColors.TextDim,
+            )
+        }
+        return
+    }
+    LazyColumn(Modifier.fillMaxSize()) {
+        item(key = "h") { Header(null, "Hidden channels don't appear in lists, the guide or search.") }
+        items(list, key = { it.id }) { ch ->
+            ListItem(
+                colors = ListItemDefaults.colors(containerColor = CoxColors.Bg),
+                headlineContent = { Text(ch.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                supportingContent = { Text(ch.groupName, color = CoxColors.TextDim, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                trailingContent = {
+                    androidx.compose.material3.TextButton(onClick = { scope.launch { repo.setHidden(ch, false) } }) { Text("Show") }
+                },
+            )
+        }
+    }
 }

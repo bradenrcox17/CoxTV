@@ -15,10 +15,16 @@ import com.coxtv.data.remote.XtreamClient
 import com.coxtv.data.remote.download
 import com.coxtv.data.remote.getStream
 import com.coxtv.data.remote.openMaybeGzip
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
@@ -48,20 +54,42 @@ data class SearchResult(
 object Categories {
     const val FAVORITES = "__favorites__"
     const val ALL = "__all__"
+    const val RECENT = "__recent__"
+    const val SPORTS = "__sports__"
+
+    /** Built-in categories in their default order. */
+    val BUILT_INS = listOf(FAVORITES, RECENT, SPORTS, ALL)
 
     fun label(key: String) = when (key) {
         FAVORITES -> "Favorites"
         ALL -> "All Channels"
+        RECENT -> "Recent"
+        SPORTS -> "Sports on now"
         else -> key
     }
 
-    fun filter(channels: List<Channel>, key: String): List<Channel> = when (key) {
+    fun filter(channels: List<Channel>, key: String, extras: CategoryExtras = CategoryExtras.EMPTY): List<Channel> = when (key) {
         FAVORITES -> channels.filter { it.favorite }.sortedWith(compareBy({ it.favoritePosition }, { it.sortOrder }))
+        RECENT -> extras.recent
+        SPORTS -> extras.sports.map { it.channel }
         ALL, "" -> channels
         else -> channels.filter { it.groupName == key }
     }
 
-    fun isBuiltIn(key: String) = key == FAVORITES || key == ALL
+    fun isBuiltIn(key: String) = key in BUILT_INS
+}
+
+/** A live game for "Sports on now". */
+data class SportsGame(val channel: Channel, val title: String, val league: String, val endMs: Long)
+
+/** Lists for the built-in categories that don't come straight from the channel table. */
+data class CategoryExtras(val recent: List<Channel>, val sports: List<SportsGame>) {
+    /** Row text for the Sports category: "NHL · Senators vs. Bruins". */
+    val sportsLabels: Map<String, String> = sports.associate { it.channel.id to "${it.league} · ${it.title}" }
+
+    companion object {
+        val EMPTY = CategoryExtras(emptyList(), emptyList())
+    }
 }
 
 /** A category on the Categories & favorites screen. */
@@ -81,8 +109,69 @@ class TvRepository(
     private val settings: SettingsStore,
     private val http: OkHttpClient,
 ) {
-    val channels: Flow<List<Channel>> = db.channels().observeAll()
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    /** Duplicates folded, hidden channels split out; computed once and shared by every screen. */
+    private val grouping: Flow<ChannelGroups.Result> =
+        combine(db.channels().observeAll(), settings.hidden) { all, hidden -> ChannelGroups.group(all, hidden) }
+            .onEach { lastGrouping = it }
+            .flowOn(Dispatchers.Default)
+            .shareIn(scope, SharingStarted.WhileSubscribed(10_000), replay = 1)
+
+    @Volatile private var lastGrouping: ChannelGroups.Result? = null
+
+    private suspend fun currentGrouping(): ChannelGroups.Result = lastGrouping ?: grouping.first()
+
+    /** Channels to show: one entry per channel (copies folded), hidden ones left out. */
+    val channels: Flow<List<Channel>> = grouping.map { it.channels }
+    val hiddenChannels: Flow<List<Channel>> = grouping.map { it.hidden }
     val groups: Flow<List<String>> = db.channels().observeGroups()
+
+    /** Every source for a shown channel, best first (the channel itself if it has no copies). */
+    suspend fun sourcesFor(channel: Channel): List<Channel> = currentGrouping().sources[channel.id] ?: listOf(channel)
+
+    /** The id shown for any channel id (copies map to their group's channel). */
+    suspend fun shownId(id: String): String = currentGrouping().shownId[id] ?: id
+
+    /** Recently watched channels, newest first. */
+    val recentChannels: Flow<List<Channel>> = combine(grouping, settings.recent) { g, ids ->
+        val byId = g.channels.associateBy { it.id }
+        ids.mapNotNull { g.shownId[it] }.distinct().mapNotNull { byId[it] }
+    }
+
+    suspend fun addRecent(channel: Channel) = settings.addRecent(channel.id)
+
+    suspend fun setHidden(channel: Channel, hide: Boolean) {
+        val ids = currentGrouping().sources[channel.id]?.map { it.id } ?: listOf(channel.id)
+        if (hide) settings.setHidden(listOf(channel.id), true) else settings.setHidden(ids + channel.id, false)
+    }
+
+    /** Games on right now, one entry per game, by league then title; refreshed every minute. */
+    val sports: Flow<List<SportsGame>> by lazy {
+        combine(grouping, nowPlaying) { g, now -> findGames(g.channels, now) }.flowOn(Dispatchers.Default)
+    }
+
+    val categoryExtras: Flow<CategoryExtras> by lazy {
+        combine(recentChannels, sports) { recent, games -> CategoryExtras(recent, games) }
+    }
+
+    private fun findGames(channels: List<Channel>, now: Map<String, ProgramEntity>): List<SportsGame> {
+        val nowMs = System.currentTimeMillis()
+        val seen = HashSet<String>()
+        val games = ArrayList<SportsGame>()
+        for (ch in channels) {
+            val p = ch.epgId?.let { now[it] }
+            val chText = ch.name + " " + ch.groupName
+            val game = when {
+                p != null && p.endMs > nowMs && Sports.isGame(p.title, chText) ->
+                    SportsGame(ch, p.title, Sports.league(p.title, chText), p.endMs)
+                p == null -> Sports.eventChannelTitle(ch.name, nowMs)?.let { SportsGame(ch, it, Sports.league(it, chText), 0L) }
+                else -> null
+            } ?: continue
+            if (seen.add(Sports.gameKey(game.title))) games += game
+        }
+        return games.sortedWith(compareBy({ Sports.LEAGUES.indexOf(it.league) }, { it.title.lowercase() }))
+    }
 
     /** Categories to show (sidebar / chips), in the user's order: only enabled ones that exist. */
     val categories: Flow<List<String>> = combine(settings.categoryOrder, groups) { order, groups ->
@@ -96,7 +185,7 @@ class TvRepository(
         val enabled = order.filter { Categories.isBuiltIn(it) || it in present }
         val enabledSet = enabled.toHashSet()
         enabled.map { CategoryOption(it, true) } +
-            (listOf(Categories.FAVORITES, Categories.ALL) + groups)
+            (Categories.BUILT_INS + groups)
                 .filter { it !in enabledSet }
                 .map { CategoryOption(it, false) }
     }
@@ -186,11 +275,16 @@ class TvRepository(
             ensureIndexes(now)
             nameIndex!! to nowIndex!!
         }
+        // Results point at the channel shown for each copy; one result per channel, none hidden.
+        val g = currentGrouping()
+        val visible = g.visibleIds
         val events = ArrayList<SearchResult>()
+        val eventSeen = HashSet<String>()
         for (i in airing.keys.indices) {
             if (airing.keys[i].contains(key)) {
                 val h = airing.hits[i]
-                if (h.endMs > now) events += SearchResult(h.channelId, h.title, h.channelName, h.groupName, h.endMs)
+                val id = g.shownId[h.channelId] ?: h.channelId
+                if (h.endMs > now && id in visible && eventSeen.add(id)) events += SearchResult(id, h.title, h.channelName, h.groupName, h.endMs)
                 if (events.size >= 100) break
             }
         }
@@ -200,10 +294,12 @@ class TvRepository(
         for (i in names.keys.indices) {
             if (names.keys[i].contains(key)) {
                 val r = names.rows[i]
-                if (r.channelId in seen) continue
+                val id = g.shownId[r.channelId] ?: r.channelId
+                if (id in seen || id !in visible) continue
+                seen += id
                 val p = airing.byChannel[r.channelId]?.takeIf { it.endMs > now }
-                channels += if (p != null) SearchResult(r.channelId, p.title, r.channelName, r.groupName, p.endMs)
-                else SearchResult(r.channelId, r.channelName, r.groupName, r.groupName, 0L)
+                channels += if (p != null) SearchResult(id, p.title, r.channelName, r.groupName, p.endMs)
+                else SearchResult(id, r.channelName, r.groupName, r.groupName, 0L)
                 if (channels.size >= 100) break
             }
         }
@@ -220,7 +316,9 @@ class TvRepository(
 
     suspend fun toggleFavorite(channel: Channel) {
         if (channel.favorite) {
-            db.channels().removeFavorite(channel.id)
+            // A folded channel is a favorite if any copy is: clear them all.
+            val ids = currentGrouping().sources[channel.id]?.map { it.id } ?: emptyList()
+            (ids + channel.id).distinct().forEach { db.channels().removeFavorite(it) }
         } else {
             val dao = db.channels()
             dao.addFavorite(FavoriteEntity(channel.id, System.currentTimeMillis(), dao.nextFavoritePosition()))
@@ -242,6 +340,12 @@ class TvRepository(
         // Put the reordered visible favorites back into the slots visible favorites occupied.
         val queue = ArrayDeque(moved)
         dao.reorderFavorites(all.map { if (it in present) queue.removeFirst() else it })
+    }
+
+    /** Sets up from a code shown on tv.thecoxhome.com: fetches the links, then connects. */
+    suspend fun connectWithSetupCode(code: String): Int {
+        val links = SetupCodes.redeem(http, code)
+        return connect(SourceConfig(m3uUrl = links.m3u, epgUrl = links.epg))
     }
 
     /** Validates the sources by loading their channel lists, then saves the config. */

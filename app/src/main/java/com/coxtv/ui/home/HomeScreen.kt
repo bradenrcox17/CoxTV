@@ -49,8 +49,10 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.coxtv.AppContainer
 import com.coxtv.data.Categories
+import com.coxtv.data.CategoryExtras
 import com.coxtv.data.db.Channel
 import com.coxtv.data.db.ProgramEntity
+import com.coxtv.ui.components.ChannelMenu
 import com.coxtv.ui.components.Clock
 import com.coxtv.ui.components.CoxWordmark
 import com.coxtv.ui.components.collectAsStateCompat
@@ -83,6 +85,8 @@ fun HomeScreen(
     val channels by repo.channels.collectAsStateCompat(null)
     val shownCategories by repo.categories.collectAsStateCompat(null)
     val nowPlaying by repo.nowPlaying.collectAsStateCompat(emptyMap())
+    val extras by repo.categoryExtras.collectAsStateCompat(CategoryExtras.EMPTY)
+    var menuFor by remember { mutableStateOf<Channel?>(null) }
     val epgUpdating by remember { EpgRefreshWorker.isRunning(context) }.collectAsStateCompat(false)
     val lastEpg by container.settings.lastEpgRefresh.collectAsStateCompat(0L)
 
@@ -98,10 +102,14 @@ fun HomeScreen(
     val allChannels = channels.orEmpty()
     val category = selected ?: Categories.ALL
     val categories = shownCategories.orEmpty()
-    val visible = remember(allChannels, category) { Categories.filter(allChannels, category) }
-    val counts = remember(allChannels) {
-        allChannels.groupingBy { it.groupName }.eachCount() +
-            mapOf(Categories.ALL to allChannels.size, Categories.FAVORITES to allChannels.count { it.favorite })
+    val visible = remember(allChannels, category, extras) { Categories.filter(allChannels, category, extras) }
+    val counts = remember(allChannels, extras) {
+        allChannels.groupingBy { it.groupName }.eachCount() + mapOf(
+            Categories.ALL to allChannels.size,
+            Categories.FAVORITES to allChannels.count { it.favorite },
+            Categories.RECENT to extras.recent.size,
+            Categories.SPORTS to extras.sports.size,
+        )
     }
 
     val listState = rememberLazyListState()
@@ -183,6 +191,7 @@ fun HomeScreen(
         }
     }
 
+    Box(Modifier.fillMaxSize()) {
     Row(Modifier.fillMaxSize().background(CoxColors.Bg).padding(horizontal = 24.dp, vertical = 20.dp)) {
         // ---- Sidebar ----
         Column(Modifier.width(232.dp).fillMaxHeight()) {
@@ -256,11 +265,14 @@ fun HomeScreen(
             when {
                 channels == null -> Unit
                 visible.isEmpty() -> EmptyMessage(
-                    if (category == Categories.FAVORITES) {
-                        if (LocalIsTouch.current) "No favorites yet.\nPress and hold a channel to add it."
-                        else "No favorites yet.\nPress ☰ Menu (or hold OK) on a channel to add it."
-                    }
-                    else "No channels in this category.",
+                    when (category) {
+                        Categories.FAVORITES ->
+                            if (LocalIsTouch.current) "No favorites yet.\nPress and hold a channel, then Add to favorites."
+                            else "No favorites yet.\nPress ☰ Menu (or hold OK) on a channel to add it."
+                        Categories.RECENT -> "Channels you watch will show up here."
+                        Categories.SPORTS -> if (lastEpg > 0) "No games on right now." else "Games show up here once the TV guide has loaded."
+                        else -> "No channels in this category."
+                    },
                 )
                 else -> LazyColumn(
                     state = listState,
@@ -276,15 +288,29 @@ fun HomeScreen(
                         ChannelRow(
                             channel = ch,
                             program = program,
+                            label = if (category == Categories.SPORTS) extras.sportsLabels[ch.id] else null,
                             now = now,
                             modifier = if (ch.id == focusTargetId) Modifier.focusRequester(lastChannelFocus) else Modifier,
                             onClick = { onPlay(ch.id, category) },
-                            onToggleFavorite = { scope.launch { repo.toggleFavorite(ch) } },
+                            onOptions = { menuFor = ch },
                         )
                     }
                 }
             }
         }
+    }
+    // On top of everything: channel options (☰ Menu / hold OK).
+    menuFor?.let { ch ->
+        ChannelMenu(
+            channel = ch,
+            onFavorite = { scope.launch { repo.toggleFavorite(ch) } },
+            onHide = { scope.launch { repo.setHidden(ch, true) } },
+            onDismiss = {
+                menuFor = null
+                scope.launch { withFrameNanos { }; runCatching { listFocus.requestFocus() } }
+            },
+        )
+    }
     }
 }
 
@@ -321,18 +347,19 @@ private fun SideItem(
 private fun ChannelRow(
     channel: Channel,
     program: ProgramEntity?,
+    label: String?,
     now: Long,
     modifier: Modifier,
     onClick: () -> Unit,
-    onToggleFavorite: () -> Unit,
+    onOptions: () -> Unit,
 ) {
     FocusTile(
         onClick = onClick,
-        onLongClick = onToggleFavorite,
+        onLongClick = onOptions,
         focusedScale = 1.01f,
         modifier = modifier.fillMaxWidth().height(62.dp).onPreviewKeyEvent {
             if (it.type == KeyEventType.KeyDown && it.key == Key.Menu) {
-                onToggleFavorite(); true
+                onOptions(); true
             } else false
         },
     ) {
@@ -345,14 +372,16 @@ private fun ChannelRow(
             )
             Column(Modifier.weight(1f)) {
                 Text(channel.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                if (program != null) {
+                if (program != null || label != null) {
                     Text(
-                        program.title,
+                        label ?: program!!.title,
                         style = MaterialTheme.typography.bodySmall,
                         color = LocalContentColor.current.copy(alpha = 0.75f),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
+                }
+                if (program != null) {
                     Spacer(Modifier.height(3.dp))
                     val fraction = (now - program.startMs).toFloat() / (program.endMs - program.startMs).coerceAtLeast(1)
                     ProgressLine(fraction, Modifier.width(220.dp))

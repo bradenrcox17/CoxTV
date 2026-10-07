@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.coxtv.AppContainer
 import com.coxtv.data.Categories
+import com.coxtv.data.CategoryExtras
 import com.coxtv.data.db.Channel
 import com.coxtv.data.db.ProgramEntity
 import com.coxtv.mobile.ui.theme.CoxColors
@@ -68,11 +69,16 @@ fun GuideScreen(
     val channels by repo.channels.collectAsStateWithLifecycle(null)
     val cats by repo.categories.collectAsStateWithLifecycle(emptyList())
     val guideVersion by container.settings.lastEpgRefresh.collectAsStateWithLifecycle(0L)
+    val extras by repo.categoryExtras.collectAsStateWithLifecycle(CategoryExtras.EMPTY)
     val all = channels.orEmpty()
-    val list = remember(all, category) { Categories.filter(all, category) }
-    val counts = remember(all) {
-        all.groupingBy { it.groupName }.eachCount() +
-            mapOf(Categories.ALL to all.size, Categories.FAVORITES to all.count { it.favorite })
+    val list = remember(all, category, extras) { Categories.filter(all, category, extras) }
+    val counts = remember(all, extras) {
+        all.groupingBy { it.groupName }.eachCount() + mapOf(
+            Categories.ALL to all.size,
+            Categories.FAVORITES to all.count { it.favorite },
+            Categories.RECENT to extras.recent.size,
+            Categories.SPORTS to extras.sports.size,
+        )
     }
 
     // The guide covers 1 hour back to 36 hours ahead (what the importer keeps).

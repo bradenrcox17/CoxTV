@@ -70,6 +70,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.coxtv.AppContainer
 import com.coxtv.data.Categories
+import com.coxtv.data.CategoryExtras
 import com.coxtv.data.db.Channel
 import com.coxtv.data.db.ProgramEntity
 import com.coxtv.player.buildLivePlayer
@@ -103,9 +104,14 @@ fun PlayerScreen(
 
     val allChannels by repo.channels.collectAsStateCompat(null)
     val nowPlaying by repo.nowPlaying.collectAsStateCompat(emptyMap())
-    val zapList = remember(allChannels, category) {
+    val extras by repo.categoryExtras.collectAsStateCompat(CategoryExtras.EMPTY)
+    // Recent reorders itself as you watch; zap through it in the order it had when you came in.
+    var recentAtEntry by remember { mutableStateOf<List<Channel>?>(null) }
+    if (recentAtEntry == null && extras.recent.isNotEmpty()) recentAtEntry = extras.recent
+    val zapList = remember(allChannels, category, extras, recentAtEntry) {
         val all = allChannels.orEmpty()
-        Categories.filter(all, category).ifEmpty { all }
+        val list = if (category == Categories.RECENT) recentAtEntry.orEmpty() else Categories.filter(all, category, extras)
+        list.ifEmpty { all }
     }
 
     var currentId by remember { mutableStateOf(channelId) }
@@ -123,6 +129,11 @@ fun PlayerScreen(
     var handledRetry by remember { mutableIntStateOf(0) }
     var digits by remember { mutableStateOf("") }
     var firstTune by remember { mutableStateOf(true) }
+    var previousId by remember { mutableStateOf<String?>(null) }
+    // Copies of this channel (HD/FHD/backup feeds): if one won't start, the next is tried.
+    var sources by remember { mutableStateOf<List<Channel>>(emptyList()) }
+    var sourceIndex by remember { mutableIntStateOf(0) }
+    var sourcePlayed by remember { mutableStateOf(false) }
     val rootFocus = remember { FocusRequester() }
 
     val player = remember { buildLivePlayer(context) }
@@ -138,6 +149,7 @@ fun PlayerScreen(
                 if (state == Player.STATE_READY) {
                     error = null
                     retries = 0
+                    sourcePlayed = true
                 }
             }
 
@@ -146,6 +158,11 @@ fun PlayerScreen(
                 if (e.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW) {
                     player.seekToDefaultPosition()
                     player.prepare()
+                    return
+                }
+                if (!sourcePlayed && sourceIndex + 1 < sources.size) {
+                    android.util.Log.i("CoxTV", "source ${sourceIndex + 1} of ${sources.size} failed; trying the next copy")
+                    sourceIndex++
                     return
                 }
                 error = e.errorCodeName.removePrefix("ERROR_CODE_").replace('_', ' ').lowercase()
@@ -176,6 +193,7 @@ fun PlayerScreen(
         if (channel.id != currentId) {
             retries = 0
             error = null
+            previousId = currentId
         }
         currentId = channel.id
         flashInfo()
@@ -188,9 +206,29 @@ fun PlayerScreen(
         tune(zapList[next])
     }
 
-    // Tune (debounced so holding up/down skims channels without starting every stream).
-    LaunchedEffect(current?.streamUrl, retryNonce) {
+    // The id may be a folded copy (e.g. last watched before copies were combined).
+    LaunchedEffect(channelId) {
+        val shown = repo.shownId(channelId)
+        if (shown != currentId && currentId == channelId) currentId = shown
+    }
+
+    LaunchedEffect(current?.id) {
+        sources = current?.let { repo.sourcesFor(it) }.orEmpty()
+        sourceIndex = 0
+    }
+
+    // Counts as recently watched once it has actually played for a few seconds.
+    LaunchedEffect(current?.id, awaitingFirstFrame) {
         val ch = current ?: return@LaunchedEffect
+        if (awaitingFirstFrame) return@LaunchedEffect
+        delay(5_000)
+        repo.addRecent(ch)
+    }
+
+    // Tune (debounced so holding up/down skims channels without starting every stream).
+    LaunchedEffect(current?.streamUrl, retryNonce, sourceIndex) {
+        val channel = current ?: return@LaunchedEffect
+        val ch = sources.getOrNull(sourceIndex)?.takeIf { sources.first().id == channel.id } ?: channel
         val isRetry = retryNonce != handledRetry
         handledRetry = retryNonce
         if (!firstTune && !isRetry) delay(400)
@@ -198,8 +236,10 @@ fun PlayerScreen(
         firstTune = false
         buffering = true
         android.util.Log.d("CoxTV", "tune ${ch.number} ${ch.name} -> ${ch.streamUrl} retry=$isRetry")
+        sourcePlayed = false
+        awaitingFirstFrame = true
         player.playChannel(ch)
-        container.settings.setLastWatched(ch.id, category)
+        container.settings.setLastWatched(channel.id, category)
     }
 
     LaunchedEffect(showInfo, infoNonce) {
@@ -288,6 +328,11 @@ fun PlayerScreen(
                         true
                     }
                     KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_INFO -> { flashInfo(); true }
+                    // Back to the channel watched before this one.
+                    KeyEvent.KEYCODE_MEDIA_REWIND, KeyEvent.KEYCODE_LAST_CHANNEL, KeyEvent.KEYCODE_MEDIA_PREVIOUS -> {
+                        previousId?.let { id -> allChannels?.firstOrNull { it.id == id } }?.let(::tune)
+                        true
+                    }
                     KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_MENU, KeyEvent.KEYCODE_GUIDE -> {
                         showInfo = false
                         showMiniGuide = true
@@ -479,7 +524,7 @@ private fun InfoOverlay(
                 }
                 Spacer(Modifier.height(8.dp))
                 if (touchActions == null) {
-                    Text("▲▼ Channel    ◀ Mini guide    OK Hide", style = MaterialTheme.typography.labelSmall, color = CoxColors.TextDim.copy(alpha = 0.7f))
+                    Text("▲▼ Channel    ◀ Mini guide    ⏪ Previous channel    OK Hide", style = MaterialTheme.typography.labelSmall, color = CoxColors.TextDim.copy(alpha = 0.7f))
                 } else {
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                         CoxButton("▲  Up", onClick = touchActions.onChannelUp)

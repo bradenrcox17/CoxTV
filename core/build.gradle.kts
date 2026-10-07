@@ -38,4 +38,6 @@ dependencies {
     api(libs.work.runtime.ktx)
     api(libs.datastore.preferences)
     api(libs.okhttp)
+
+    testImplementation("junit:junit:4.13.2")
 }

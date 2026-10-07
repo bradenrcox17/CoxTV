@@ -22,6 +22,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -39,6 +40,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.coxtv.AppContainer
 import com.coxtv.data.Categories
+import com.coxtv.data.db.Channel
 import com.coxtv.ui.components.CoxButton
 import com.coxtv.ui.components.FocusTile
 import com.coxtv.ui.components.collectAsStateCompat
@@ -73,6 +75,8 @@ fun OrganizeScreen(container: AppContainer) {
             CoxButton("Categories", onClick = { tab = 0 }, primary = tab == 0, modifier = Modifier.focusRequester(firstFocus))
             Spacer(Modifier.width(12.dp))
             CoxButton("Favorites order", onClick = { tab = 1 }, primary = tab == 1)
+            Spacer(Modifier.width(12.dp))
+            CoxButton("Hidden channels", onClick = { tab = 2 }, primary = tab == 2)
         }
         Spacer(Modifier.height(16.dp))
         when (tab) {
@@ -117,6 +121,8 @@ fun OrganizeScreen(container: AppContainer) {
                     }
                 }
             }
+
+            2 -> HiddenPane(container)
 
             else -> Pane(
                 "Favorites order",
@@ -196,5 +202,44 @@ private fun CoroutineScope.keepVisible(state: LazyListState, index: Int) {
     if (visible.isEmpty()) return
     if (index <= visible.first().index || index >= visible.last().index) {
         launch { state.animateScrollToItem((index - 2).coerceAtLeast(0)) }
+    }
+}
+
+/** Channels hidden from lists and search. Rows stay put after OK so focus never jumps. */
+@Composable
+private fun HiddenPane(container: AppContainer) {
+    val repo = container.repository
+    val scope = rememberCoroutineScope()
+    val hidden by repo.hiddenChannels.collectAsStateCompat(null)
+    // Shown again during this visit: kept in the list (ticked) instead of disappearing.
+    var restored by remember { mutableStateOf<List<Channel>>(emptyList()) }
+    val rows = remember(hidden, restored) { (hidden.orEmpty() + restored).distinctBy { it.id }.sortedBy { it.name.lowercase() } }
+    Pane("Hidden channels", "Press OK to show a channel again. Hide channels with ☰ Menu (or hold OK) in a channel list.", Modifier.fillMaxSize()) {
+        if (hidden != null && rows.isEmpty()) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("No hidden channels.", style = MaterialTheme.typography.bodyLarge, color = CoxColors.TextDim)
+            }
+        } else {
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                items(rows, key = { it.id }) { ch ->
+                    val back = restored.any { it.id == ch.id }
+                    FocusTile(
+                        onClick = {
+                            if (!back) {
+                                restored = restored + ch
+                                scope.launch { repo.setHidden(ch, false) }
+                            }
+                        },
+                        focusedScale = 1.01f,
+                        modifier = Modifier.fillMaxWidth().height(44.dp),
+                    ) {
+                        Row(Modifier.fillMaxSize().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Label(ch.name, null, Modifier.weight(1f))
+                            Text(if (back) "Shown again" else "Hidden", style = MaterialTheme.typography.labelMedium, color = LocalContentColor.current.copy(alpha = 0.6f))
+                        }
+                    }
+                }
+            }
+        }
     }
 }

@@ -95,6 +95,8 @@ function categoryLabel(key as dynamic) as string
     if key = invalid then return ""
     if key = "__fav__" then return "Favorites"
     if key = "__all__" then return "All Channels"
+    if key = "__recent__" then return "Recent"
+    if key = "__sports__" then return "Sports on now"
     return key
 end function
 
@@ -126,19 +128,90 @@ sub setFavKeys(keys as object)
     regWrite("favorites", keys.Join(","))
 end sub
 
-' Categories shown in the sidebar, in the user's order ("__fav__", "__all__" or group names).
-' Out of the box only Favorites and All Channels; groups are added in Settings.
+' Categories shown in the sidebar, in the user's order ("__fav__", "__recent__",
+' "__sports__", "__all__" or group names). Out of the box only those built-ins; groups are
+' added in Settings.
 function categoryOrder() as object
     raw = regRead("categories")
     if raw <> "" then
         v = ParseJson(raw)
-        if type(v) = "roArray" then return v
+        if type(v) = "roArray" then
+            if regRead("categoriesV2") = "1" then return v
+            ' Saved before Recent and Sports existed: add them after Favorites (once).
+            out = []
+            added = false
+            for each k in v
+                out.Push(k)
+                if k = "__fav__" then
+                    out.Append(missingBuiltIns(v))
+                    added = true
+                end if
+            end for
+            if not added then
+                missing = missingBuiltIns(v)
+                missing.Append(out)
+                out = missing
+            end if
+            return out
+        end if
     end if
-    return ["__fav__", "__all__"]
+    return ["__fav__", "__recent__", "__sports__", "__all__"]
+end function
+
+function missingBuiltIns(v as object) as object
+    out = []
+    for each b in ["__recent__", "__sports__"]
+        found = false
+        for each k in v
+            if k = b then found = true
+        end for
+        if not found then out.Push(b)
+    end for
+    return out
 end function
 
 sub setCategoryOrder(keys as object)
     regWrite("categories", FormatJson(keys))
+    regWrite("categoriesV2", "1")
+end sub
+
+function isBuiltInCategory(key as dynamic) as boolean
+    return key = "__fav__" or key = "__all__" or key = "__recent__" or key = "__sports__"
+end function
+
+' ---- Recently watched (newest first) and hidden channels: lists of channel keys ----
+
+function keyList(regKey as string) as object
+    out = []
+    for each k in regRead(regKey).Split(",")
+        if k <> "" then out.Push(k)
+    end for
+    return out
+end function
+
+function recentKeys() as object
+    return keyList("recent")
+end function
+
+sub addRecent(key as string)
+    out = [key]
+    for each k in recentKeys()
+        if k <> key and out.Count() < 20 then out.Push(k)
+    end for
+    regWrite("recent", out.Join(","))
+end sub
+
+function hiddenKeys() as object
+    return keyList("hidden")
+end function
+
+sub setHidden(key as string, hide as boolean)
+    out = []
+    for each k in hiddenKeys()
+        if k <> key then out.Push(k)
+    end for
+    if hide then out.Push(key)
+    regWrite("hidden", out.Join(","))
 end sub
 
 ' Adds or removes a channel key from favorites. Returns true if it is now a favorite.

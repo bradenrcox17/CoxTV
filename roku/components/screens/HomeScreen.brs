@@ -54,8 +54,8 @@ sub onActive()
         m.lastFocus = m.side
         m.side.setFocus(true)
         loadCategory(firstCategory())
-    else if m.current = "__fav__" then
-        loadCategory("__fav__")
+    else if m.current = "__fav__" or m.current = "__recent__" or m.current = "__sports__" then
+        loadCategory(m.current) ' these change while you watch
     else
         refreshNow()
     end if
@@ -95,6 +95,12 @@ sub buildSide()
         else if k = "__all__" then
             keys.Push(k)
             labels.Push("All Channels  (" + m.global.bus.channelCount.ToStr() + ")")
+        else if k = "__recent__" then
+            keys.Push(k)
+            labels.Push("Recent")
+        else if k = "__sports__" then
+            keys.Push(k)
+            labels.Push("Sports on now")
         else if counts.DoesExist(k) then
             keys.Push(k)
             labels.Push(k + "  (" + counts[k].ToStr() + ")")
@@ -248,6 +254,10 @@ sub onList(event as object)
     if n = 0 then
         if m.current = "__fav__" then
             showEmpty("No favorites yet." + chr(10) + "Press * on a channel to add it.")
+        else if m.current = "__recent__" then
+            showEmpty("Channels you watch will show up here.")
+        else if m.current = "__sports__" then
+            showEmpty("No games on right now." + chr(10) + "(Games are found in the TV guide once it has loaded.)")
         else
             showEmpty("No channels in this category.")
         end if
@@ -259,6 +269,13 @@ sub onList(event as object)
     end if
     m.empty.visible = false
     tryFocusKey(content, 0)
+    if m.restoreIndex <> invalid then
+        ' After hiding a channel: stay at the same spot in the list.
+        ri = m.restoreIndex
+        m.restoreIndex = invalid
+        if ri >= content.getChildCount() then ri = content.getChildCount() - 1
+        if ri > 0 then m.list.jumpToItem = ri
+    end if
     if m.focusListAfterLoad then
         m.focusListAfterLoad = false
         focusList()
@@ -361,16 +378,65 @@ function onKeyEvent(key as string, press as boolean) as boolean
         content = m.list.content
         if content <> invalid then
             ch = content.getChild(m.list.itemFocused)
-            if ch <> invalid then
-                if toggleFavorite(ch.id) then
-                    ch.starRating = 100
-                else
-                    ch.starRating = 0
-                end if
-                buildSide()
-            end if
+            if ch <> invalid then showChannelOptions(ch)
         end if
         return true
     end if
     return false
 end function
+
+' ---------------------------------------------------------------- channel options (*)
+
+sub showChannelOptions(ch as object)
+    m.optionsFor = ch
+    isFav = ch.starRating >= 100
+    favLabel = "Add to favorites"
+    if isFav then favLabel = "Remove from favorites"
+    dlg = CreateObject("roSGNode", "StandardMessageDialog")
+    if dlg = invalid then dlg = CreateObject("roSGNode", "Dialog") ' Roku OS < 10
+    dlg.title = ch.title
+    if dlg.hasField("message") then dlg.message = ["Hidden channels can be brought back in Settings > Hidden channels."]
+    dlg.buttons = [favLabel, "Hide this channel", "Cancel"]
+    dlg.observeFieldScoped("buttonSelected", "onOptionsButton")
+    dlg.observeFieldScoped("wasClosed", "onOptionsClosed")
+    m.optionsDialog = dlg
+    m.top.getScene().dialog = dlg
+end sub
+
+sub onOptionsButton()
+    dlg = m.optionsDialog
+    ch = m.optionsFor
+    if dlg = invalid or ch = invalid then return
+    choice = dlg.buttonSelected
+    closeOptions()
+    if choice = 0 then
+        if toggleFavorite(ch.id) then
+            ch.starRating = 100
+        else
+            ch.starRating = 0
+        end if
+        buildSide()
+        if m.current = "__fav__" then loadCategory("__fav__")
+    else if choice = 1 then
+        setHidden(ch.id, true)
+        focusIndex = m.list.itemFocused
+        loadCategory(m.current)
+        m.restoreIndex = focusIndex
+    end if
+end sub
+
+sub onOptionsClosed()
+    closeOptions()
+end sub
+
+sub closeOptions()
+    dlg = m.optionsDialog
+    m.optionsDialog = invalid
+    if dlg <> invalid then
+        dlg.unobserveFieldScoped("buttonSelected")
+        dlg.unobserveFieldScoped("wasClosed")
+        dlg.close = true
+    end if
+    m.top.getScene().dialog = invalid
+    if m.lastFocus <> invalid and m.top.active then m.lastFocus.setFocus(true)
+end sub

@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.sp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.coxtv.AppContainer
+import com.coxtv.data.SetupCodes
 import com.coxtv.data.SourceConfig
 import com.coxtv.ui.components.CoxButton
 import com.coxtv.ui.components.CoxWordmark
@@ -49,6 +50,7 @@ fun LoginScreen(container: AppContainer, onConnected: () -> Unit) {
     var pass by rememberSaveable { mutableStateOf("") }
     var m3u by rememberSaveable { mutableStateOf("") }
     var epg by rememberSaveable { mutableStateOf("") }
+    var code by rememberSaveable { mutableStateOf("") }
     var loaded by rememberSaveable { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
@@ -64,6 +66,30 @@ fun LoginScreen(container: AppContainer, onConnected: () -> Unit) {
             loaded = true
         }
         runCatching { firstField.requestFocus() }
+    }
+
+    fun useCode() {
+        if (SetupCodes.normalize(code).length != 6) {
+            isError = true
+            message = "Enter the 6-character code from tv.thecoxhome.com (Set up a TV), like K7P-2QX."
+            return
+        }
+        busy = true
+        isError = false
+        message = "Getting your links…"
+        scope.launch {
+            try {
+                message = "Loading channels…"
+                val count = container.repository.connectWithSetupCode(code)
+                message = "Loaded $count channels"
+                onConnected()
+            } catch (e: Exception) {
+                isError = true
+                message = e.message ?: e.javaClass.simpleName
+            } finally {
+                busy = false
+            }
+        }
     }
 
     fun connect() {
@@ -105,9 +131,21 @@ fun LoginScreen(container: AppContainer, onConnected: () -> Unit) {
         }
         Spacer(Modifier.height(24.dp))
 
+        // Easiest: a one-time code from tv.thecoxhome.com instead of typing links.
+        Section(title = "Enter setup code", subtitle = "From tv.thecoxhome.com > Watch > Set up a TV", modifier = Modifier.fillMaxWidth()) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TvTextField(code, { code = it }, "Setup code", Modifier.width(320.dp).focusRequester(firstField), placeholder = "K7P-2QX")
+                Spacer(Modifier.width(20.dp))
+                CoxButton(if (busy) "Connecting…" else "Use code", onClick = { if (!busy) useCode() }, primary = true)
+            }
+        }
+        Spacer(Modifier.height(20.dp))
+        Text("Or enter your links yourself:", style = MaterialTheme.typography.titleSmall, color = CoxColors.TextDim)
+        Spacer(Modifier.height(12.dp))
+
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(32.dp)) {
             Section(title = "Xtream Codes", subtitle = "Primary source", modifier = Modifier.weight(1f)) {
-                TvTextField(server, { server = it }, "Server URL", Modifier.focusRequester(firstField), placeholder = "http://provider.example:8080")
+                TvTextField(server, { server = it }, "Server URL", placeholder = "http://provider.example:8080")
                 TvTextField(user, { user = it }, "Username", keyboardType = androidx.compose.ui.text.input.KeyboardType.Text)
                 TvTextField(pass, { pass = it }, "Password", isPassword = true)
             }

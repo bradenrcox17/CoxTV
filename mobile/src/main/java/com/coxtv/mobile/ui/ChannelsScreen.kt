@@ -1,5 +1,9 @@
 package com.coxtv.mobile.ui
 
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
@@ -40,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.coxtv.AppContainer
 import com.coxtv.data.Categories
+import com.coxtv.data.CategoryExtras
 import com.coxtv.data.db.Channel
 import com.coxtv.data.db.ProgramEntity
 import com.coxtv.mobile.ui.theme.CoxColors
@@ -59,6 +64,7 @@ fun ChannelsScreen(
     val shown by repo.categories.collectAsStateWithLifecycle(null)
     val cats = shown.orEmpty()
     val nowPlaying by repo.nowPlaying.collectAsStateWithLifecycle(emptyMap())
+    val extras by repo.categoryExtras.collectAsStateWithLifecycle(CategoryExtras.EMPTY)
     val all = channels.orEmpty()
 
     // First visit: last watched category, else Favorites if there are any, else All.
@@ -80,10 +86,14 @@ fun ChannelsScreen(
     }
 
     val cat = category ?: Categories.ALL
-    val visible = remember(all, cat) { Categories.filter(all, cat) }
-    val counts = remember(all) {
-        all.groupingBy { it.groupName }.eachCount() +
-            mapOf(Categories.ALL to all.size, Categories.FAVORITES to all.count { it.favorite })
+    val visible = remember(all, cat, extras) { Categories.filter(all, cat, extras) }
+    val counts = remember(all, extras) {
+        all.groupingBy { it.groupName }.eachCount() + mapOf(
+            Categories.ALL to all.size,
+            Categories.FAVORITES to all.count { it.favorite },
+            Categories.RECENT to extras.recent.size,
+            Categories.SPORTS to extras.sports.size,
+        )
     }
     val gridState = rememberLazyGridState()
     LaunchedEffect(cat) { gridState.scrollToItem(0) }
@@ -101,8 +111,12 @@ fun ChannelsScreen(
             channels == null -> Unit
             visible.isEmpty() -> Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
                 Text(
-                    if (cat == Categories.FAVORITES) "No favorites yet.\nTap the heart on a channel (or press and hold it) to add it."
-                    else "No channels in this category.",
+                    when (cat) {
+                        Categories.FAVORITES -> "No favorites yet.\nTap the heart on a channel to add it."
+                        Categories.RECENT -> "Channels you watch will show up here."
+                        Categories.SPORTS -> "No games on right now (or the TV guide hasn't loaded yet)."
+                        else -> "No channels in this category."
+                    },
                     textAlign = TextAlign.Center,
                     color = CoxColors.TextDim,
                 )
@@ -117,9 +131,11 @@ fun ChannelsScreen(
                     ChannelRow(
                         channel = ch,
                         program = ch.epgId?.let { nowPlaying[it] },
+                        label = if (cat == Categories.SPORTS) extras.sportsLabels[ch.id] else null,
                         now = now,
                         onClick = { onPlay(ch.id) },
                         onToggleFavorite = { scope.launch { repo.toggleFavorite(ch) } },
+                        onHide = { scope.launch { repo.setHidden(ch, true) } },
                     )
                 }
             }
@@ -132,46 +148,64 @@ fun ChannelsScreen(
 private fun ChannelRow(
     channel: Channel,
     program: ProgramEntity?,
+    label: String?,
     now: Long,
     onClick: () -> Unit,
     onToggleFavorite: () -> Unit,
+    onHide: () -> Unit,
 ) {
-    ListItem(
-        modifier = Modifier.combinedClickable(onClick = onClick, onLongClick = onToggleFavorite),
-        colors = ListItemDefaults.colors(containerColor = CoxColors.Bg),
-        leadingContent = {
-            Text(
-                channel.number.toString(),
-                style = MaterialTheme.typography.titleSmall,
-                color = CoxColors.TextDim,
-                modifier = Modifier.width(44.dp),
-            )
-        },
-        headlineContent = {
-            Text(channel.name, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        },
-        supportingContent = if (program == null) null else {
-            {
-                Column {
-                    Text(program.title, maxLines = 1, overflow = TextOverflow.Ellipsis, color = CoxColors.TextDim)
-                    Spacer(Modifier.height(4.dp))
-                    val fraction = (now - program.startMs).toFloat() / (program.endMs - program.startMs).coerceAtLeast(1)
-                    LinearProgressIndicator(
-                        progress = { fraction.coerceIn(0f, 1f) },
-                        modifier = Modifier.fillMaxWidth(0.7f).height(3.dp),
-                        drawStopIndicator = {},
+    var menu by remember { mutableStateOf(false) }
+    Box {
+        ListItem(
+            modifier = Modifier.combinedClickable(onClick = onClick, onLongClick = { menu = true }),
+            colors = ListItemDefaults.colors(containerColor = CoxColors.Bg),
+            leadingContent = {
+                Text(
+                    channel.number.toString(),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = CoxColors.TextDim,
+                    modifier = Modifier.width(44.dp),
+                )
+            },
+            headlineContent = {
+                Text(channel.name, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            },
+            supportingContent = if (program == null && label == null) null else {
+                {
+                    Column {
+                        Text(label ?: program!!.title, maxLines = 1, overflow = TextOverflow.Ellipsis, color = CoxColors.TextDim)
+                        if (program != null) {
+                            Spacer(Modifier.height(4.dp))
+                            val fraction = (now - program.startMs).toFloat() / (program.endMs - program.startMs).coerceAtLeast(1)
+                            LinearProgressIndicator(
+                                progress = { fraction.coerceIn(0f, 1f) },
+                                modifier = Modifier.fillMaxWidth(0.7f).height(3.dp),
+                                drawStopIndicator = {},
+                            )
+                        }
+                    }
+                }
+            },
+            trailingContent = {
+                IconButton(onClick = onToggleFavorite) {
+                    Icon(
+                        if (channel.favorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                        contentDescription = if (channel.favorite) "Remove from favorites" else "Add to favorites",
+                        tint = if (channel.favorite) CoxColors.Fav else CoxColors.TextDim,
                     )
                 }
-            }
-        },
-        trailingContent = {
-            IconButton(onClick = onToggleFavorite) {
-                Icon(
-                    if (channel.favorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-                    contentDescription = if (channel.favorite) "Remove from favorites" else "Add to favorites",
-                    tint = if (channel.favorite) CoxColors.Fav else CoxColors.TextDim,
-                )
-            }
-        },
-    )
+            },
+        )
+        // Press and hold: channel options.
+        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+            DropdownMenuItem(
+                text = { Text(if (channel.favorite) "Remove from favorites" else "Add to favorites") },
+                onClick = { menu = false; onToggleFavorite() },
+            )
+            DropdownMenuItem(
+                text = { Text("Hide this channel") },
+                onClick = { menu = false; onHide() },
+            )
+        }
+    }
 }

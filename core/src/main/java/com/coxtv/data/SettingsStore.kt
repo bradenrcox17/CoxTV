@@ -1,6 +1,7 @@
 package com.coxtv.data
 
 import android.content.Context
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -26,7 +27,18 @@ data class LastWatched(val channelId: String, val category: String)
 
 private val Context.dataStore by preferencesDataStore(name = "settings")
 
-private val DEFAULT_CATEGORIES = listOf(Categories.FAVORITES, Categories.ALL)
+private val DEFAULT_CATEGORIES = listOf(Categories.FAVORITES, Categories.RECENT, Categories.SPORTS, Categories.ALL)
+private const val RECENT_MAX = 20
+
+private fun readList(raw: String): List<String> = JSONArray(raw).let { a -> List(a.length()) { a.getString(it) } }
+
+/** Lists saved before Recent and Sports existed get them right after Favorites (once). */
+private fun withNewBuiltIns(saved: List<String>): List<String> {
+    val add = listOf(Categories.RECENT, Categories.SPORTS).filter { it !in saved }
+    if (add.isEmpty()) return saved
+    val at = saved.indexOf(Categories.FAVORITES).let { if (it < 0) 0 else it + 1 }
+    return saved.take(at) + add + saved.drop(at)
+}
 
 class SettingsStore(private val context: Context) {
     private object Keys {
@@ -41,6 +53,9 @@ class SettingsStore(private val context: Context) {
         val lastEpgRefresh = longPreferencesKey("last_epg_refresh")
         val lastChannelRefresh = longPreferencesKey("last_channel_refresh")
         val categories = stringPreferencesKey("categories")
+        val categoriesV2 = booleanPreferencesKey("categories_v2") // Recent / Sports added
+        val recent = stringPreferencesKey("recent")
+        val hidden = stringPreferencesKey("hidden")
     }
 
     private val data get() = context.dataStore.data
@@ -63,12 +78,36 @@ class SettingsStore(private val context: Context) {
      */
     val categoryOrder: Flow<List<String>> = data.map { prefs ->
         val raw = prefs[Keys.categories] ?: return@map DEFAULT_CATEGORIES
-        runCatching { JSONArray(raw).let { a -> List(a.length()) { a.getString(it) } } }
-            .getOrDefault(DEFAULT_CATEGORIES)
+        val saved = runCatching { readList(raw) }.getOrDefault(DEFAULT_CATEGORIES)
+        if (prefs[Keys.categoriesV2] == true) saved else withNewBuiltIns(saved)
     }
 
     suspend fun setCategoryOrder(keys: List<String>) {
-        context.dataStore.edit { it[Keys.categories] = JSONArray(keys.distinct()).toString() }
+        context.dataStore.edit {
+            it[Keys.categories] = JSONArray(keys.distinct()).toString()
+            it[Keys.categoriesV2] = true
+        }
+    }
+
+    /** Channels watched most recently, newest first (raw channel ids). */
+    val recent: Flow<List<String>> = data.map { prefs -> prefs[Keys.recent]?.let { runCatching { readList(it) }.getOrNull() }.orEmpty() }
+
+    suspend fun addRecent(channelId: String) {
+        context.dataStore.edit { prefs ->
+            val list = prefs[Keys.recent]?.let { runCatching { readList(it) }.getOrNull() }.orEmpty()
+            prefs[Keys.recent] = JSONArray((listOf(channelId) + (list - channelId)).take(RECENT_MAX)).toString()
+        }
+    }
+
+    /** Channels the user hid (raw ids; hiding one copy of a channel hides all its copies). */
+    val hidden: Flow<Set<String>> = data.map { prefs -> prefs[Keys.hidden]?.let { runCatching { readList(it) }.getOrNull() }.orEmpty().toSet() }
+
+    suspend fun setHidden(ids: Collection<String>, hide: Boolean) {
+        context.dataStore.edit { prefs ->
+            val set = prefs[Keys.hidden]?.let { runCatching { readList(it) }.getOrNull() }.orEmpty().toMutableSet()
+            if (hide) set += ids else set -= ids.toSet()
+            prefs[Keys.hidden] = JSONArray(set.toList()).toString()
+        }
     }
 
     suspend fun config(): SourceConfig = config.first()

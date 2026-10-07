@@ -31,6 +31,7 @@ end sub
 
 sub refreshMenu()
     labels = [
+        "Enter setup code  (from tv.thecoxhome.com > Watch > Set up a TV)"
         "Playlist (M3U) URL:   " + valueOr(m.m3u, "not set")
         "Guide (XMLTV) URL:   " + valueOr(m.epg, "optional")
         "Enter Xtream login instead (server, username, password)"
@@ -39,6 +40,7 @@ sub refreshMenu()
     if not m.firstRun then
         labels.Push("Categories:  choose which show in the sidebar, and their order")
         labels.Push("Reorder favorites")
+        labels.Push("Hidden channels")
     end if
     root = CreateObject("roSGNode", "ContentNode")
     for each label in labels
@@ -59,17 +61,21 @@ sub onSelected()
     m.status.text = ""
     m.status.color = "0xFF6B6BFF"
     if i = 0 then
-        editField("m3u", "Playlist (M3U) URL", m.m3u)
+        editField("code", "Setup code from tv.thecoxhome.com (like K7P-2QX)", "")
     else if i = 1 then
-        editField("epg", "Guide (XMLTV) URL - optional", m.epg)
+        editField("m3u", "Playlist (M3U) URL", m.m3u)
     else if i = 2 then
-        editField("xtServer", "Xtream server, e.g. example.com:80 (http:// is optional)", m.xtServer)
+        editField("epg", "Guide (XMLTV) URL - optional", m.epg)
     else if i = 3 then
-        save()
+        editField("xtServer", "Xtream server, e.g. example.com:80 (http:// is optional)", m.xtServer)
     else if i = 4 then
-        m.top.navigate = { action: "push", screen: "OrganizeScreen", params: { mode: "categories" } }
+        save()
     else if i = 5 then
+        m.top.navigate = { action: "push", screen: "OrganizeScreen", params: { mode: "categories" } }
+    else if i = 6 then
         m.top.navigate = { action: "push", screen: "OrganizeScreen", params: { mode: "favorites" } }
+    else if i = 7 then
+        m.top.navigate = { action: "push", screen: "OrganizeScreen", params: { mode: "hidden" } }
     end if
 end sub
 
@@ -114,7 +120,9 @@ sub onDialogButton()
     m.nextEdit = invalid
     if m.dialog.buttonSelected = 0 then
         value = m.dialog.text.Trim()
-        if m.editing = "m3u" then
+        if m.editing = "code" then
+            redeemCode(value)
+        else if m.editing = "m3u" then
             m.m3u = value
         else if m.editing = "epg" then
             m.epg = value
@@ -213,4 +221,43 @@ sub save()
     regWrite("m3uUrl", m.m3u)
     regWrite("epgUrl", m.epg)
     m.top.navigate = { action: "reset", screen: "HomeScreen", load: true }
+end sub
+
+' ---------------------------------------------------------------- setup code
+
+' Exchanges a code from tv.thecoxhome.com for the playlist and guide links (the background
+' service does the network request), then saves them and loads the channels.
+sub redeemCode(code as string)
+    clean = ""
+    up = UCase(code)
+    for k = 1 to Len(up)
+        c = Mid(up, k, 1)
+        if (c >= "A" and c <= "Z") or (c >= "0" and c <= "9") then clean = clean + c
+    end for
+    if Len(clean) <> 6 then
+        m.status.text = "Setup codes have 6 letters and numbers, like K7P-2QX."
+        return
+    end if
+    m.status.color = "0x9AA3B2FF"
+    m.status.text = "Checking the code..."
+    m.codeReply = svcCall({ type: "setupCode", code: clean }, "onCodeReply")
+end sub
+
+sub onCodeReply(event as object)
+    if m.codeReply = invalid or not event.getRoSGNode().isSameNode(m.codeReply) then return
+    m.codeReply = invalid
+    r = event.getData()
+    if r.error <> invalid and r.error <> "" then
+        m.status.color = "0xFF6B6BFF"
+        m.status.text = r.error
+        return
+    end if
+    m.m3u = r.m3u
+    ' The stream server's ready-made guide loads in seconds on a Roku; the provider's raw
+    ' guide takes minutes.
+    m.epg = r.guide
+    m.status.color = "0x5BD68AFF"
+    m.status.text = "Got your links - loading channels..."
+    refreshMenu()
+    save()
 end sub

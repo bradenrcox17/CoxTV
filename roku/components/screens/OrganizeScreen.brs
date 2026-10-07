@@ -23,7 +23,12 @@ end sub
 sub onParams()
     p = m.top.params
     if p.mode <> invalid then m.mode = p.mode
-    if m.mode = "favorites" then
+    if m.mode = "hidden" then
+        m.title.text = "Hidden channels"
+        m.hint.text = "OK: show a hidden channel again (OK again hides it). Hide channels with * in a channel list." + chr(10) + "Hidden channels don't appear in lists, the guide, search or Sports on now."
+        m.empty.text = "Loading..."
+        m.favReply = svcCall({ type: "hiddenList" }, "onHiddenList")
+    else if m.mode = "favorites" then
         m.title.text = "Reorder favorites"
         m.hint.text = "OK: pick up a channel, move it with Up / Down, then OK to drop it.    *: remove from favorites." + chr(10) + "Channel up / down in the player follows this order."
         m.empty.text = "Loading..."
@@ -70,7 +75,7 @@ sub buildCategories(focusIndex as integer)
     enabledSet = {}
     enabledSet.SetModeCaseSensitive()
     for each k in categoryOrder()
-        if (k = "__fav__" or k = "__all__" or counts.DoesExist(k)) and not enabledSet.DoesExist(k) then
+        if (isBuiltInCategory(k) or counts.DoesExist(k)) and not enabledSet.DoesExist(k) then
             enabled.Push(k)
             enabledSet[k] = true
         end if
@@ -79,7 +84,7 @@ sub buildCategories(focusIndex as integer)
     for each k in enabled
         addRow(root, k, categoryLabel(k), countText(k, counts), true, true)
     end for
-    for each k in ["__fav__", "__all__"]
+    for each k in ["__fav__", "__recent__", "__sports__", "__all__"]
         if not enabledSet.DoesExist(k) then addRow(root, k, categoryLabel(k), countText(k, counts), false, true)
     end for
     for each k in groups
@@ -92,6 +97,10 @@ end sub
 function countText(key as string, counts as object) as string
     if key = "__fav__" then
         n = favKeys().Count()
+    else if key = "__recent__" then
+        n = recentKeys().Count()
+    else if key = "__sports__" then
+        return "games on now"
     else if key = "__all__" then
         n = m.global.bus.channelCount
     else
@@ -239,7 +248,9 @@ end sub
 sub onSelected()
     i = m.list.itemSelected
     m.status.text = ""
-    if m.moving >= 0 then
+    if m.mode = "hidden" then
+        toggleHiddenRow(i)
+    else if m.moving >= 0 then
         dropMove()
     else if m.mode = "favorites" then
         startMove(i)
@@ -254,6 +265,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
         dropMove()
         return true
     end if
+    if key = "options" and m.mode = "hidden" then return true
     if key = "options" then
         i = m.list.itemFocused
         if m.moving >= 0 then
@@ -272,3 +284,32 @@ function onKeyEvent(key as string, press as boolean) as boolean
     end if
     return false
 end function
+
+' ---------------------------------------------------------------- hidden channels
+
+sub onHiddenList(event as object)
+    if m.favReply = invalid or not event.getRoSGNode().isSameNode(m.favReply) then return
+    m.favReply = invalid
+    items = event.getData().items
+    root = CreateObject("roSGNode", "ContentNode")
+    if items <> invalid then
+        for each r in items
+            addRow(root, r[0], r[1], "Hidden", false, false)
+        end for
+    end if
+    m.empty.text = "No hidden channels." + chr(10) + "Press * on a channel in a list to hide it."
+    showContent(root, 0)
+end sub
+
+' Rows stay in place (marked) so the list doesn't jump while you go through it.
+sub toggleHiddenRow(i as integer)
+    node = m.list.content.getChild(i)
+    if node = invalid then return
+    if node.shortDescriptionLine1 = "Hidden" then
+        setHidden(node.id, false)
+        node.shortDescriptionLine1 = "Shown again"
+    else
+        setHidden(node.id, true)
+        node.shortDescriptionLine1 = "Hidden"
+    end if
+end sub

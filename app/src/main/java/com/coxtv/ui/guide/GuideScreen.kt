@@ -58,6 +58,7 @@ import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import com.coxtv.AppContainer
 import com.coxtv.data.Categories
+import com.coxtv.data.CategoryExtras
 import com.coxtv.data.db.Channel
 import com.coxtv.data.db.ProgramEntity
 import com.coxtv.ui.components.Clock
@@ -89,9 +90,10 @@ fun GuideScreen(container: AppContainer, category: String, onPlay: (channelId: S
     val now by rememberNow(30_000)
 
     val channels by repo.channels.collectAsStateCompat(null)
-    val list = remember(channels, category) {
+    val extras by repo.categoryExtras.collectAsStateCompat(CategoryExtras.EMPTY)
+    val list = remember(channels, category, extras) {
         val all = channels.orEmpty()
-        Categories.filter(all, category).ifEmpty { all }
+        Categories.filter(all, category, extras).ifEmpty { all }
     }
 
     val minStart = remember { floorSlot(System.currentTimeMillis()) - 2 * SLOT_MS }

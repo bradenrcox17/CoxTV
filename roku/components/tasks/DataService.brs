@@ -83,6 +83,12 @@ sub handleRequest(req as dynamic)
         result = nowNext(req.key)
     else if t = "search" then
         result = { query: req.query, results: search(req.query) }
+    else if t = "sources" then
+        result = { key: req.key, urls: sourcesFor(req.key) }
+    else if t = "hiddenList" then
+        result = { items: hiddenList() }
+    else if t = "setupCode" then
+        result = redeemSetupCode(req.code)
     end if
     if result <> invalid and req.reply <> invalid then req.reply.result = result
 end sub
@@ -198,7 +204,8 @@ sub publishPlaylist()
     for i = 0 to m.pl.groupNames.Count() - 1
         cats.Push({ name: m.pl.groupNames[i], count: m.pl.groupMembers[i].Count() })
     end for
-    m.bus.channelCount = m.pl.names.Count()
+    resetListCaches()
+    m.bus.channelCount = allShown().Count() ' after folding copies and hiding
     m.bus.categories = cats
     m.bus.status = ""
     m.bus.playlistState = "ready"
@@ -255,6 +262,8 @@ function parsePlaylistFrom(url as string) as dynamic
         return invalid
     end if
     buildNameIndex(pl)
+    m.bus.status = "Combining duplicate channels..."
+    buildGroups(pl)
     return pl
 end function
 
@@ -360,6 +369,11 @@ function loadChannelCache(url as string) as integer
     data = ParseJson(ReadAsciiFile(path), "i")
     if data = invalid or data.names = invalid or data.names.Count() = 0 or data.nameOffs = invalid then return -1
     m.pl = data
+    if data.shown = invalid then
+        ' Cache from before duplicate channels were combined: group once and re-save.
+        buildGroups(data)
+        saveChannelCache(url)
+    end if
     return nowSecs() - regRead("chCacheAt", "0").ToInt()
 end function
 
@@ -607,24 +621,30 @@ end function
 function buildList(category as dynamic, start as dynamic, count as dynamic) as object
     pl = m.pl
     idxs = invalid
-    listTotal = 0
+    labels = invalid
     if category = "__fav__" then
+        idxs = shownFor(favKeys())
+    else if category = "__recent__" then
+        idxs = shownFor(recentKeys())
+    else if category = "__sports__" then
         idxs = []
-        for each k in favKeys()
-            i = pl.keyIndex[k]
-            if i <> invalid then idxs.Push(i)
+        labels = []
+        for each g in sportsList()
+            idxs.Push(g.i)
+            labels.Push(g)
         end for
-        listTotal = idxs.Count()
     else if category = "__all__" or category = invalid then
-        listTotal = pl.names.Count()
-        if listTotal > 5000 then listTotal = 5000 ' keep "All" usable on huge playlists
+        idxs = allShown()
     else
         gi = pl.groupIndex[category]
         if gi <> invalid then
-            idxs = pl.groupMembers[gi]
-            listTotal = idxs.Count()
+            idxs = groupShown(category, pl.groupMembers[gi])
+        else
+            idxs = []
         end if
     end if
+    listTotal = idxs.Count()
+    if category = "__all__" and listTotal > 5000 then listTotal = 5000 ' keep "All" usable on huge playlists
 
     s = 0
     if start <> invalid then s = start
@@ -632,19 +652,15 @@ function buildList(category as dynamic, start as dynamic, count as dynamic) as o
     if count <> invalid and s + count < e then e = s + count
 
     favs = {}
-    for each k in favKeys()
-        favs[k] = true
+    for each i in shownFor(favKeys())
+        favs[i.ToStr()] = true
     end for
     now = nowSecs()
     ' Plain arrays, not ContentNodes: nodes created here would be owned by this thread
     ' and every UI read would have to rendezvous with it.
     items = []
     for j = s to e - 1
-        if idxs = invalid then
-            i = j
-        else
-            i = idxs[j]
-        end if
+        i = idxs[j]
         nowTitle = ""
         nowStart = 0
         nowEnd = 0
@@ -654,9 +670,188 @@ function buildList(category as dynamic, start as dynamic, count as dynamic) as o
             nowStart = p[0]
             nowEnd = p[1]
         end if
-        items.Push([pl.keys[i], pl.names[i], pl.urls[i], pl.logos[i], pl.groupNames[pl.grp[i]], pl.nums[i], favs.DoesExist(pl.keys[i]), nowTitle, nowStart, nowEnd])
+        if labels <> invalid then nowTitle = labels[j].league + "  -  " + labels[j].title
+        items.Push([pl.keys[i], pl.names[i], pl.urls[i], pl.logos[i], pl.groupNames[pl.grp[i]], pl.nums[i], favs.DoesExist(i.ToStr()), nowTitle, nowStart, nowEnd])
     end for
-    return { category: category, items: items, start: s, listTotal: listTotal, total: pl.names.Count() }
+    return { category: category, items: items, start: s, listTotal: listTotal, total: allShown().Count() }
+end function
+
+' ---------------------------------------------------------------- shown / hidden channels
+
+sub resetListCaches()
+    m.hiddenRaw = invalid
+    m.hiddenSet = invalid
+    m.allShownCache = invalid
+    m.groupCache = {}
+    m.sportsCache = invalid
+end sub
+
+' Shown-channel indexes the user hid ("hidden" registry keys; hiding any copy hides all).
+function hiddenSet() as object
+    raw = regRead("hidden")
+    if m.hiddenSet <> invalid and raw = m.hiddenRaw then return m.hiddenSet
+    pl = m.pl
+    set = {}
+    for each k in raw.Split(",")
+        i = pl.keyIndex[k]
+        if i <> invalid then set[pl.shown[i].ToStr()] = true
+    end for
+    m.hiddenRaw = raw
+    m.hiddenSet = set
+    m.allShownCache = invalid
+    m.groupCache = {}
+    m.sportsCache = invalid
+    return set
+end function
+
+' Every shown channel (one per group of copies), not hidden, in playlist order.
+function allShown() as object
+    hidden = hiddenSet()
+    if m.allShownCache <> invalid then return m.allShownCache
+    pl = m.pl
+    out = []
+    shown = pl.shown
+    for i = 0 to pl.names.Count() - 1
+        if shown[i] = i and not hidden.DoesExist(i.ToStr()) then out.Push(i)
+        if i mod 4000 = 3999 then pumpRequests()
+    end for
+    m.allShownCache = out
+    return out
+end function
+
+' A playlist group's channels as shown channels (a copy in this group shows its group's channel).
+function groupShown(name as string, members as object) as object
+    hidden = hiddenSet()
+    if m.groupCache = invalid then m.groupCache = {}
+    cached = m.groupCache[name]
+    if cached <> invalid then return cached
+    out = []
+    seen = {}
+    for each i in members
+        s = m.pl.shown[i]
+        k = s.ToStr()
+        if not seen.DoesExist(k) and not hidden.DoesExist(k) then
+            seen[k] = true
+            out.Push(s)
+        end if
+    end for
+    m.groupCache[name] = out
+    return out
+end function
+
+' Channel keys -> shown channel indexes (deduplicated, hidden ones left out), in order.
+function shownFor(keys as object) as object
+    pl = m.pl
+    hidden = hiddenSet()
+    out = []
+    seen = {}
+    for each k in keys
+        i = pl.keyIndex[k]
+        if i <> invalid then
+            s = pl.shown[i]
+            sk = s.ToStr()
+            if not seen.DoesExist(sk) and not hidden.DoesExist(sk) then
+                seen[sk] = true
+                out.Push(s)
+            end if
+        end if
+    end for
+    return out
+end function
+
+' Stream URLs of a channel's other copies, best first (for falling back when it won't play).
+function sourcesFor(key as dynamic) as object
+    out = []
+    if key = invalid then return out
+    i = m.pl.keyIndex[key]
+    if i = invalid then return out
+    alts = m.pl.alts[m.pl.shown[i].ToStr()]
+    if alts <> invalid then
+        for each a in alts
+            out.Push(m.pl.urls[a])
+        end for
+    end if
+    return out
+end function
+
+' Hidden channels for Settings > Hidden channels: [key, name, group], by name.
+function hiddenList() as object
+    pl = m.pl
+    rows = []
+    for each k in hiddenSet()
+        i = k.ToInt()
+        rows.Push({ key: pl.keys[i], name: pl.names[i], group: pl.groupNames[pl.grp[i]], sort: LCase(pl.names[i]) })
+    end for
+    rows.SortBy("sort")
+    out = []
+    for each r in rows
+        out.Push([r.key, r.name, r.group])
+    end for
+    return out
+end function
+
+' Games on right now, one per game, by league then title. Rebuilt when a show ends.
+function sportsList() as object
+    now = nowSecs()
+    hidden = hiddenSet()
+    if m.sportsCache <> invalid and now < m.sportsUntil then return m.sportsCache
+    ensureNowIndex(now)
+    initSportsRules()
+    pl = m.pl
+    games = []
+    seen = {}
+    seen.SetModeCaseSensitive()
+    idx = m.nowIdx
+    if idx.titles <> invalid then
+        for e = 0 to idx.titles.Count() - 1
+            members = pl.tvgIndex[idx.tvgs[e]]
+            if members <> invalid and idx.ends[e] > now then
+                s = pl.shown[members[0]]
+                if not hidden.DoesExist(s.ToStr()) then
+                    title = idx.titles[e]
+                    chText = pl.names[s] + " " + pl.groupNames[pl.grp[s]]
+                    if isGame(title, chText) then
+                        gk = gameKey(title)
+                        if not seen.DoesExist(gk) then
+                            seen[gk] = true
+                            games.Push(newGame(s, title, leagueOf(title, chText), idx.ends[e]))
+                        end if
+                    end if
+                end if
+            end if
+        end for
+    end if
+    if pl.events <> invalid then
+        for each s in pl.events
+            if not hidden.DoesExist(s.ToStr()) and currentProgram(pl.tvg[s], now) = invalid then
+                title = eventChannelTitle(pl.names[s], now)
+                if title <> "" then
+                    gk = gameKey(title)
+                    if not seen.DoesExist(gk) then
+                        seen[gk] = true
+                        games.Push(newGame(s, title, leagueOf(title, pl.names[s] + " " + pl.groupNames[pl.grp[s]]), 0))
+                    end if
+                end if
+            end if
+        end for
+    end if
+    games.SortBy("sort")
+    m.sportsCache = games
+    m.sportsUntil = m.nowIdxUntil
+    if m.sportsUntil > now + 60 then m.sportsUntil = now + 60
+    return games
+end function
+
+function newGame(i as integer, title as string, league as string, endTime as integer) as object
+    rank = 99
+    leagues = m.sp.leagues
+    for r = 0 to leagues.Count() - 1
+        if leagues[r] = league then
+            rank = r
+            exit for
+        end if
+    end for
+    return { i: i, title: title, league: league, endTime: endTime, sort: Right("0" + rank.ToStr(), 2) + LCase(title) }
 end function
 function currentProgram(tvgId as string, now as integer) as dynamic
     if tvgId = "" then return invalid
@@ -797,6 +992,7 @@ function search(query as dynamic) as object
     now = nowSecs()
     pl = m.pl
     seen = {}
+    hidden = hiddenSet()
 
     ensureNowIndex(now)
     idx = m.nowIdx
@@ -806,9 +1002,13 @@ function search(query as dynamic) as object
             e = entryAt(idx.offs, p)
             members = pl.tvgIndex[idx.tvgs[e]]
             if members <> invalid then
+                ' Copies of a channel show up once, as the channel shown for them; hidden ones not at all.
                 for each i in members
-                    events.Push({ title: idx.titles[e], channel: pl.names[i], key: pl.keys[i], group: pl.groupNames[pl.grp[i]], endTime: idx.ends[e] })
-                    seen[pl.keys[i]] = true
+                    s = pl.shown[i]
+                    if not seen.DoesExist(pl.keys[s]) and not hidden.DoesExist(s.ToStr()) then
+                        events.Push({ title: idx.titles[e], channel: pl.names[s], key: pl.keys[s], group: pl.groupNames[pl.grp[s]], endTime: idx.ends[e] })
+                        seen[pl.keys[s]] = true
+                    end if
                 end for
             end if
             ' continue after this entry
@@ -825,9 +1025,11 @@ function search(query as dynamic) as object
     if offs <> invalid and offs.Count() > 0 then
         p = Instr(1, pl.nameBlob, q)
         while p > 0 and channels.Count() < 100
-            i = entryAt(offs, p)
+            hit = entryAt(offs, p)
+            i = pl.shown[hit]
             k = pl.keys[i]
-            if not seen.DoesExist(k) then
+            if not seen.DoesExist(k) and not hidden.DoesExist(i.ToStr()) then
+                seen[k] = true
                 cp = currentProgram(pl.tvg[i], now)
                 if cp <> invalid then
                     channels.Push({ title: cp[2], channel: pl.names[i], key: k, group: pl.groupNames[pl.grp[i]], endTime: cp[1] })
@@ -835,8 +1037,8 @@ function search(query as dynamic) as object
                     channels.Push({ title: pl.names[i], channel: pl.groupNames[pl.grp[i]], key: k, group: pl.groupNames[pl.grp[i]], endTime: 0 })
                 end if
             end if
-            if i + 1 < offs.Count() then
-                p = Instr(offs[i + 1], pl.nameBlob, q)
+            if hit + 1 < offs.Count() then
+                p = Instr(offs[hit + 1], pl.nameBlob, q)
             else
                 p = 0
             end if
@@ -863,4 +1065,34 @@ function cleanTitle(t as string) as string
     if Instr(1, t, "ᴸᶦᵛᵉ") > 0 then t = t.Replace("ᴸᶦᵛᵉ", "LIVE")
     if Instr(1, t, "ᴺᵉʷ") > 0 then t = t.Replace("ᴺᵉʷ", "NEW")
     return t.Trim()
+end function
+
+' ---------------------------------------------------------------- setup codes
+
+' One-time code from tv.thecoxhome.com ("Set up a TV") -> playlist and guide links.
+function redeemSetupCode(code as dynamic) as object
+    if code = invalid or code = "" then return { error: "Enter the code from tv.thecoxhome.com." }
+    ut = CreateObject("roUrlTransfer")
+    port = CreateObject("roMessagePort")
+    ut.SetMessagePort(port)
+    ut.SetUrl("https://stream.thecoxhome.com:9443/setup/" + code)
+    ut.SetCertificatesFile("common:/certs/ca-bundle.crt")
+    ut.InitClientCertificates()
+    ut.RetainBodyOnError(true)
+    if not ut.AsyncGetToString() then return { error: "Couldn't reach the setup server." }
+    msg = wait(15000, port)
+    if msg = invalid then
+        ut.AsyncCancel()
+        return { error: "The setup server didn't answer. Check the Roku's internet connection." }
+    end if
+    status = msg.GetResponseCode()
+    if status = 404 then return { error: "That code didn't work. Codes work once and expire after 10 minutes - get a new one on tv.thecoxhome.com." }
+    if status = 429 then return { error: "Too many wrong codes. Wait a few minutes and try again." }
+    if status <> 200 then return { error: "The setup server answered " + status.ToStr() + ". Try again in a moment." }
+    data = ParseJson(msg.GetString())
+    if data = invalid or data.m3u = invalid or data.m3u = "" then return { error: "The setup server didn't send a playlist." }
+    guide = data.app_guide
+    if guide = invalid or guide = "" then guide = data.epg
+    if guide = invalid then guide = ""
+    return { m3u: data.m3u, guide: guide, error: "" }
 end function
