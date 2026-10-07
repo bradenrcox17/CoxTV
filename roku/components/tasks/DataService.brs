@@ -411,7 +411,12 @@ sub loadEpg(url as string, isRefresh as boolean)
         return
     end if
     m.bus.status = "Loading guide..."
-    m.epg = parseEpgFile(path)
+    prebuilt = readPrebuiltGuide(path)
+    if prebuilt <> invalid then
+        m.epg = prebuilt
+    else
+        m.epg = parseEpgFile(path)
+    end if
     CreateObject("roFileSystem").Delete(path) ' the JSON cache replaces it
     m.epgLoadedAt = nowSecs()
     m.nowIdxUntil = 0
@@ -420,6 +425,21 @@ sub loadEpg(url as string, isRefresh as boolean)
     m.bus.epgState = "ready"
     saveGuideCache(url)
 end sub
+
+' A guide already in this app's format, e.g. from the CoxOnAir stream server
+' ({"coxtv_guide": 1, "programs": {tvg-id: [[start, end, title, desc], ...]}}).
+' Loads in about a second, where parsing a big provider XMLTV takes minutes on a Roku.
+' Returns invalid for anything else (normal XMLTV).
+function readPrebuiltGuide(path as string) as dynamic
+    ba = CreateObject("roByteArray")
+    ba.ReadFile(path, 0, 16)
+    head = ba.ToAsciiString().Trim()
+    if Left(head, 1) <> "{" then return invalid
+    data = ParseJson(ReadAsciiFile(path))
+    if type(data) <> "roAssociativeArray" or data.coxtv_guide = invalid or type(data.programs) <> "roAssociativeArray" then return invalid
+    print "CoxTV: ready-made guide for "; data.programs.Count(); " channels"
+    return data.programs
+end function
 
 ' Streams through the XMLTV file chunk by chunk with Instr scanning (no DOM), keeping
 ' only programmes for playlist channels within the guide window.
