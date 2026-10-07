@@ -148,7 +148,7 @@ fun LoginScreen(container: AppContainer, onConnected: () -> Unit) {
                 Spacer(Modifier.height(12.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        "Linked as \"$deviceName\" (Remote on tv.thecoxhome.com and the phone app). " +
+                        "Linked as \"$deviceName\" to the account that made the code (its Remote on tv.thecoxhome.com and phone). " +
                             if (useServer) "Channels play through your stream server." else "Channels play straight from the provider.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = CoxColors.TextDim,

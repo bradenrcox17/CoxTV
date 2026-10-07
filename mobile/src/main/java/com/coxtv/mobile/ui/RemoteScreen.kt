@@ -97,8 +97,8 @@ fun RemoteScreen(container: AppContainer, onSetUp: () -> Unit) {
         Text("Remote", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(top = 12.dp, bottom = 8.dp))
         if (!linked) {
             Text(
-                "Control a Roku or Fire TV from here, and send channels to it. First link this phone: " +
-                    "on tv.thecoxhome.com > Watch, choose Set up a TV, then enter the code here.",
+                "Control your Roku or Fire TV from here, and send channels to it. First link this phone: " +
+                    "on tv.thecoxhome.com > Watch, choose Set up a TV, then enter the code here. You will see the TVs set up with codes from the same sign-in.",
                 color = CoxColors.TextDim,
             )
             Spacer(Modifier.height(16.dp))
@@ -108,8 +108,8 @@ fun RemoteScreen(container: AppContainer, onSetUp: () -> Unit) {
         when {
             tvs == null && problem == null -> Text("Looking for TVs…", color = CoxColors.TextDim)
             list.isEmpty() && problem == null -> Text(
-                "No TVs linked yet. Set up the Roku or Fire TV with a code from tv.thecoxhome.com > Watch > Set up a TV " +
-                    "(CoxTV 1.0.8 or newer).",
+                "None of your TVs are linked yet. Set up the Roku or Fire TV with a code from tv.thecoxhome.com > Watch > " +
+                    "Set up a TV, signed in as you (CoxTV 1.0.8 or newer). You only see devices set up with your codes.",
                 color = CoxColors.TextDim,
             )
             else -> FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
