@@ -27,6 +27,7 @@ sub init()
     svc.observeFieldScoped("status", "onStatus")
     svc.observeFieldScoped("epgState", "onStatus")
     svc.observeFieldScoped("epgVersion", "refreshNow")
+    svc.observeFieldScoped("prefsVersion", "onPrefsChanged") ' settings synced from another device
 
     m.sideKeys = []
     m.current = invalid
@@ -54,7 +55,7 @@ sub onActive()
         m.lastFocus = m.side
         m.side.setFocus(true)
         loadCategory(firstCategory())
-    else if m.current = "__fav__" or m.current = "__recent__" or m.current = "__sports__" then
+    else if isLiveCategory(m.current) then
         loadCategory(m.current) ' these change while you watch
     else
         refreshNow()
@@ -68,6 +69,7 @@ sub onClosed()
     svc.unobserveFieldScoped("status")
     svc.unobserveFieldScoped("epgState")
     svc.unobserveFieldScoped("epgVersion")
+    svc.unobserveFieldScoped("prefsVersion")
     m.nowTimer.control = "stop"
     m.clockTimer.control = "stop"
 end sub
@@ -98,9 +100,9 @@ sub buildSide()
         else if k = "__recent__" then
             keys.Push(k)
             labels.Push("Recent")
-        else if k = "__sports__" then
+        else if k = "__sports__" or k = "__cfb__" or Left(k, 11) = "__league__:" then
             keys.Push(k)
-            labels.Push("Sports on now")
+            labels.Push(categoryLabel(k))
         else if counts.DoesExist(k) then
             keys.Push(k)
             labels.Push(k + "  (" + counts[k].ToStr() + ")")
@@ -212,7 +214,7 @@ sub onSideSelected()
         m.top.navigate = { action: "push", screen: "SearchScreen" }
     else if key = "#guide" then
         cat = m.current
-        if cat = invalid then cat = "__all__"
+        if cat = invalid or cat = "__cfb__" then cat = "__all__"
         m.top.navigate = { action: "push", screen: "GuideScreen", params: { category: cat } }
     else if key = "#settings" then
         m.top.navigate = { action: "push", screen: "SetupScreen", params: { firstRun: false } }
@@ -250,6 +252,10 @@ sub onList(event as object)
     total = data.total
     if m.current = "__all__" and total <> invalid and total > n then
         m.catCount.text = "Showing " + n.ToStr() + " of " + total.ToStr() + " - open a category for all"
+    else if m.current = "__cfb__" then
+        m.catCount.text = n.ToStr() + " games  -  press * on a game to star your teams"
+    else if m.current = "__sports__" or Left(m.current, 11) = "__league__:" then
+        m.catCount.text = n.ToStr() + " live games"
     else
         m.catCount.text = n.ToStr() + " channels"
     end if
@@ -259,7 +265,15 @@ sub onList(event as object)
         else if m.current = "__recent__" then
             showEmpty("Channels you watch will show up here.")
         else if m.current = "__sports__" then
-            showEmpty("No games on right now." + chr(10) + "(Games are found in the TV guide once it has loaded.)")
+            showEmpty("No live games right now." + chr(10) + "(Games are found in the TV guide once it has loaded.)")
+        else if Left(m.current, 11) = "__league__:" then
+            showEmpty("No live " + Mid(m.current, 12) + " games right now.")
+        else if m.current = "__cfb__" then
+            if regRead("deviceToken") = "" then
+                showEmpty("The College Football guide comes from tv.thecoxhome.com." + chr(10) + "Set this Roku up with a code (Settings > Enter setup code) to see it.")
+            else
+                showEmpty("No college football games this week.")
+            end if
         else
             showEmpty("No channels in this category.")
         end if
@@ -332,6 +346,15 @@ sub onChannelSelected()
     if content = invalid then return
     ch = content.getChild(m.list.itemSelected)
     if ch = invalid then return
+    if m.current = "__cfb__" then
+        ' A game: play the channel showing it (channel up/down then goes through all channels).
+        if ch.id = "" then
+            m.catCount.text = "No channel is showing this game yet"
+        else
+            m.top.navigate = { action: "push", screen: "PlayerScreen", params: { category: "__all__", key: ch.id } }
+        end if
+        return
+    end if
     m.top.navigate = { action: "push", screen: "PlayerScreen", params: { category: m.current, key: ch.id, content: content } }
 end sub
 
@@ -380,7 +403,11 @@ function onKeyEvent(key as string, press as boolean) as boolean
         content = m.list.content
         if content <> invalid then
             ch = content.getChild(m.list.itemFocused)
-            if ch <> invalid then showChannelOptions(ch)
+            if ch <> invalid and m.current = "__cfb__" then
+                showTeamOptions(m.list.itemFocused)
+            else if ch <> invalid then
+                showChannelOptions(ch)
+            end if
         end if
         return true
     end if
@@ -441,4 +468,68 @@ sub closeOptions()
     end if
     m.top.getScene().dialog = invalid
     if m.lastFocus <> invalid and m.top.active then m.lastFocus.setFocus(true)
+end sub
+
+' Lists that change while you watch (refreshed whenever this screen comes back).
+function isLiveCategory(key as dynamic) as boolean
+    if key = invalid then return false
+    return key = "__fav__" or key = "__recent__" or key = "__sports__" or key = "__cfb__" or Left(key, 11) = "__league__:"
+end function
+
+' Favorites, categories, hidden channels or teams changed on another device.
+sub onPrefsChanged()
+    buildSide()
+    if m.current <> invalid and not hasGroup(m.current) then
+        loadCategory(firstCategory())
+    else if isLiveCategory(m.current) then
+        loadCategory(m.current)
+    end if
+end sub
+
+' ---------------------------------------------------------------- your teams (* on a game)
+
+sub showTeamOptions(index as integer)
+    m.teamsReply = svcCall({ type: "cfbTeams", index: index }, "onTeams")
+end sub
+
+sub onTeams(event as object)
+    if m.teamsReply = invalid or not event.getRoSGNode().isSameNode(m.teamsReply) then return
+    m.teamsReply = invalid
+    teams = event.getData().teams
+    if teams = invalid or teams.Count() = 0 then return
+    m.teamChoices = teams
+    buttons = []
+    for each t in teams
+        if t.mine then buttons.Push("Remove " + t.display + " from your teams") else buttons.Push("Star " + t.display)
+    end for
+    buttons.Push("Done")
+    dlg = CreateObject("roSGNode", "StandardMessageDialog")
+    if dlg = invalid then dlg = CreateObject("roSGNode", "Dialog") ' Roku OS < 10
+    dlg.title = "Your teams"
+    if dlg.hasField("message") then dlg.message = ["Your teams' games are listed first, here, in the phone app and on tv.thecoxhome.com."]
+    dlg.buttons = buttons
+    dlg.observeFieldScoped("buttonSelected", "onTeamButton")
+    dlg.observeFieldScoped("wasClosed", "onOptionsClosed")
+    m.optionsDialog = dlg
+    m.top.getScene().dialog = dlg
+end sub
+
+sub onTeamButton()
+    dlg = m.optionsDialog
+    if dlg = invalid or m.teamChoices = invalid then return
+    choice = dlg.buttonSelected
+    closeOptions()
+    if choice >= 0 and choice < m.teamChoices.Count() then
+        t = m.teamChoices[choice]
+        toggleTeam(t.key, t.display)
+        focusIndex = m.list.itemFocused
+        m.syncReply = svcCall({ type: "syncNow" }, "onTeamsSynced")
+        m.restoreIndex = focusIndex
+    end if
+end sub
+
+sub onTeamsSynced(event as object)
+    if m.syncReply = invalid or not event.getRoSGNode().isSameNode(m.syncReply) then return
+    m.syncReply = invalid
+    if m.current = "__cfb__" then loadCategory("__cfb__")
 end sub

@@ -19,8 +19,12 @@ sub serviceLoop()
     m.deferred = invalid
     m.bus.ready = true
 
+    m.lastSyncCheck = 0
+    m.syncSnapshot = ""
+    m.lastSync = 0
     while true
         msg = wait(30000, m.port)
+        maybeSyncPrefs()
         if msg = invalid then
             ensureNowIndex(nowSecs()) ' keep search instant: rebuild while idle
             ' Housekeeping while the app is open: refresh the guide every 4 hours, and a
@@ -91,6 +95,12 @@ sub handleRequest(req as dynamic)
         result = redeemSetupCode(req.code)
     else if t = "serverKey" then
         result = { key: serverKey(req.id) }
+    else if t = "cfbTeams" then
+        result = { teams: cfbTeams(req.index) }
+    else if t = "syncNow" then
+        m.cfbUntil = 0
+        syncPrefs()
+        result = { ok: true }
     end if
     if result <> invalid and req.reply <> invalid then req.reply.result = result
 end sub
@@ -227,6 +237,9 @@ end sub
 
 ' Downloads and parses an M3U into a new playlist object (invalid on failure).
 function parsePlaylistFrom(url as string) as dynamic
+    ' Linked: the stream server's ready-made list, when it was built from this playlist.
+    fromServer = serverPlaylist(url)
+    if fromServer <> invalid then return fromServer
     path = "cachefs:/playlist.m3u"
     m.bus.status = "Downloading playlist..."
     if not downloadToFile(url, path) then
@@ -420,7 +433,16 @@ sub loadEpg(url as string, isRefresh as boolean)
     if not isRefresh then m.bus.epgState = "loading"
     path = "cachefs:/epg.xml"
     m.bus.status = "Downloading guide..."
-    if not downloadToFile(url, path) then
+    ' A guide we already have (ready-made guides send an ETag) is not downloaded again.
+    etag = ""
+    if isRefresh and regRead("gCacheUrl") = url then etag = regRead("gEtag")
+    if not downloadToFile(url, path, etag) then
+        if m.notModified then
+            m.bus.status = ""
+            m.epgLoadedAt = nowSecs()
+            regWrite("gCacheAt", m.epgLoadedAt.ToStr())
+            return
+        end if
         m.bus.status = "Guide download failed: " + m.lastHttpError
         m.epgLoadedAt = nowSecs() ' retry at the next refresh interval
         if not isRefresh then m.bus.epgState = "error"
@@ -440,6 +462,7 @@ sub loadEpg(url as string, isRefresh as boolean)
     m.bus.epgVersion = m.bus.epgVersion + 1
     m.bus.epgState = "ready"
     saveGuideCache(url)
+    regWrite("gEtag", m.lastEtag)
 end sub
 
 ' A guide already in this app's format, e.g. from the CoxOnAir stream server
@@ -562,13 +585,16 @@ sub sortPrograms(lst as object)
     end for
 end sub
 
-function downloadToFile(url as string, path as string) as boolean
+function downloadToFile(url as string, path as string, etag = "" as string) as boolean
     m.lastHttpError = ""
+    m.notModified = false
+    m.lastEtag = ""
     ut = CreateObject("roUrlTransfer")
     port = CreateObject("roMessagePort")
     ut.SetMessagePort(port)
     ut.SetUrl(url)
     ut.EnableEncodings(true)
+    if etag <> "" then ut.AddHeader("If-None-Match", etag)
     if LCase(Left(url, 6)) = "https:" then
         ut.SetCertificatesFile("common:/certs/ca-bundle.crt")
         ut.InitClientCertificates()
@@ -593,6 +619,15 @@ function downloadToFile(url as string, path as string) as boolean
             end if
         else if type(msg) = "roUrlEvent" and msg.GetInt() = 1 then
             code = msg.GetResponseCode()
+            if code = 304 then
+                m.notModified = true ' the copy we have is current
+                return false
+            end if
+            headers = msg.GetResponseHeaders()
+            if headers <> invalid then
+                if headers.etag <> invalid then m.lastEtag = headers.etag
+                if headers.ETag <> invalid then m.lastEtag = headers.ETag
+            end if
             if code >= 200 and code < 300 then
                 fs = CreateObject("roFileSystem")
                 if not fs.Exists(tmp) then
@@ -634,6 +669,19 @@ function buildList(category as dynamic, start as dynamic, count as dynamic) as o
         for each g in sportsList()
             idxs.Push(g.i)
             labels.Push(g)
+        end for
+    else if category = "__cfb__" then
+        items = cfbList()
+        return { category: category, items: items, start: 0, listTotal: items.Count(), total: allShown().Count() }
+    else if Left(category, 11) = "__league__:" then
+        league = Mid(category, 12)
+        idxs = []
+        labels = []
+        for each g in sportsList()
+            if g.league = league then
+                idxs.Push(g.i)
+                labels.Push(g)
+            end if
         end for
     else if category = "__all__" or category = invalid then
         idxs = allShown()
@@ -687,6 +735,8 @@ sub resetListCaches()
     m.groupCache = {}
     m.sportsCache = invalid
     m.serverIdx = invalid
+    m.srvSports = invalid
+    m.cfb = invalid
 end sub
 
 ' Key of the shown channel for a stream server channel id (a channel sent from the remote).
@@ -813,6 +863,8 @@ end function
 ' Games on right now, one per game, by league then title. Rebuilt when a show ends.
 function sportsList() as object
     now = nowSecs()
+    srv = serverSportsList() ' linked: the stream server's list (it knows which programmes are live)
+    if srv <> invalid then return srv
     hidden = hiddenSet()
     if m.sportsCache <> invalid and now < m.sportsUntil then return m.sportsCache
     ensureNowIndex(now)
@@ -1124,3 +1176,18 @@ function redeemSetupCode(code as dynamic) as object
     if data.device_name <> invalid then deviceName = data.device_name
     return { m3u: data.m3u, guide: guide, device: device, deviceName: deviceName, error: "" }
 end function
+
+' Settings sync while the app is open: every 5 minutes, and soon after favorites, hidden
+' channels, categories or teams change here.
+sub maybeSyncPrefs()
+    now = nowSecs()
+    if now - m.lastSyncCheck < 20 then return
+    m.lastSyncCheck = now
+    if regRead("deviceToken") = "" or m.pl.names.Count() = 0 then return
+    snap = regRead("favorites") + "|" + regRead("hidden") + "|" + regRead("categories") + "|" + regRead("teams")
+    if snap <> m.syncSnapshot or now - m.lastSync >= 300 then
+        syncPrefs()
+        m.lastSync = now
+        m.syncSnapshot = regRead("favorites") + "|" + regRead("hidden") + "|" + regRead("categories") + "|" + regRead("teams")
+    end if
+end sub

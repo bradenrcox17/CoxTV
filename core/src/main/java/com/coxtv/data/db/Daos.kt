@@ -29,6 +29,9 @@ abstract class ChannelDao {
     @Query("SELECT * FROM channels")
     abstract suspend fun allEntities(): List<ChannelEntity>
 
+    @Query("SELECT COUNT(*) FROM channels")
+    abstract suspend fun count(): Int
+
     @Query("SELECT * FROM channels")
     abstract fun allEntitiesBlocking(): List<ChannelEntity>
 
@@ -53,9 +56,22 @@ abstract class ChannelDao {
     @Query("DELETE FROM favorites WHERE channelId = :channelId")
     abstract suspend fun removeFavorite(channelId: String)
 
+    @Query("DELETE FROM favorites")
+    abstract suspend fun clearFavorites()
+
+    @Transaction
+    open suspend fun replaceFavorites(ids: List<String>) {
+        clearFavorites()
+        val now = System.currentTimeMillis()
+        ids.forEachIndexed { i, id -> addFavorite(FavoriteEntity(id, now, i)) }
+    }
+
     /** Every favorite id (including ones the current playlist no longer has), in list order. */
     @Query("SELECT channelId FROM favorites ORDER BY position, addedAt")
     abstract suspend fun favoriteIds(): List<String>
+
+    @Query("SELECT channelId FROM favorites ORDER BY position, addedAt")
+    abstract fun observeFavoriteIds(): Flow<List<String>>
 
     @Query("SELECT COALESCE(MAX(position), -1) + 1 FROM favorites")
     abstract suspend fun nextFavoritePosition(): Int

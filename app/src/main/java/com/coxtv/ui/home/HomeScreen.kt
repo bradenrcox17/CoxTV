@@ -24,6 +24,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
@@ -87,6 +88,9 @@ fun HomeScreen(
     val nowPlaying by repo.nowPlaying.collectAsStateCompat(emptyMap())
     val extras by repo.categoryExtras.collectAsStateCompat(CategoryExtras.EMPTY)
     var menuFor by remember { mutableStateOf<Channel?>(null) }
+    // After hiding a channel, focus moves to the next one in the list (not the sidebar).
+    var focusAfterHide by remember { mutableStateOf<String?>(null) }
+    val cfbGuide by repo.cfbGuide.collectAsStateCompat(null)
     val epgUpdating by remember { EpgRefreshWorker.isRunning(context) }.collectAsStateCompat(false)
     val lastEpg by container.settings.lastEpgRefresh.collectAsStateCompat(0L)
 
@@ -103,13 +107,17 @@ fun HomeScreen(
     val category = selected ?: Categories.ALL
     val categories = shownCategories.orEmpty()
     val visible = remember(allChannels, category, extras) { Categories.filter(allChannels, category, extras) }
-    val counts = remember(allChannels, extras) {
-        allChannels.groupingBy { it.groupName }.eachCount() + mapOf(
-            Categories.ALL to allChannels.size,
-            Categories.FAVORITES to allChannels.count { it.favorite },
-            Categories.RECENT to extras.recent.size,
-            Categories.SPORTS to extras.sports.size,
-        )
+    val visibleNow by rememberUpdatedState(visible)  // for coroutines that outlive a recomposition
+    val counts = remember(allChannels, extras, cfbGuide) {
+        allChannels.groupingBy { it.groupName }.eachCount() +
+            extras.sports.groupingBy { Categories.LEAGUE + it.league }.eachCount() +
+            Categories.LEAGUE_KEYS.associateWith { 0 }.filterKeys { k -> extras.sports.none { Categories.LEAGUE + it.league == k } } +
+            mapOf(
+                Categories.ALL to allChannels.size,
+                Categories.FAVORITES to allChannels.count { it.favorite },
+                Categories.RECENT to extras.recent.size,
+                Categories.SPORTS to extras.sports.size,
+            ) + (cfbGuide?.let { mapOf(Categories.CFB to it.rows.size) } ?: emptyMap())
     }
 
     val listState = rememberLazyListState()
@@ -214,7 +222,7 @@ fun HomeScreen(
                     anchorCategory?.let { selected = it }
                 }
                 item(key = "search") { SideItem("Search what's on", onFocused = cancelPending, onClick = onOpenSearch) }
-                item(key = "guide") { SideItem("TV Guide", onFocused = cancelPending, onClick = { onOpenGuide(category) }) }
+                item(key = "guide") { SideItem("TV Guide", onFocused = cancelPending, onClick = { onOpenGuide(if (category == Categories.CFB) Categories.ALL else category) }) }
                 item(key = "organize") { SideItem("Categories & favorites", onFocused = cancelPending, onClick = onOrganize) }
                 item(key = "refresh") { SideItem(if (refreshing) "Refreshing…" else "Refresh channels", onFocused = cancelPending, onClick = ::refreshChannels) }
                 item(key = "sources") { SideItem("Edit sources", onFocused = cancelPending, onClick = onEditSources) }
@@ -251,7 +259,15 @@ fun HomeScreen(
             Row(Modifier.fillMaxWidth().padding(bottom = 12.dp, start = 4.dp), verticalAlignment = Alignment.Bottom) {
                 Text(Categories.label(category), style = MaterialTheme.typography.headlineSmall)
                 Spacer(Modifier.width(12.dp))
-                Text("${visible.size} channels", style = MaterialTheme.typography.bodyMedium, color = CoxColors.TextDim)
+                Text(
+                    when {
+                        category == Categories.CFB -> cfbGuide?.let { g -> "${g.rows.size} games" + (g.week?.let { " · week $it" } ?: "") }.orEmpty()
+                        category == Categories.SPORTS || Categories.leagueOf(category) != null -> "${visible.size} live games"
+                        else -> "${visible.size} channels"
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = CoxColors.TextDim,
+                )
                 Spacer(Modifier.weight(1f))
                 Text(
                     status ?: when {
@@ -266,13 +282,21 @@ fun HomeScreen(
 
             when {
                 channels == null -> Unit
+                category == Categories.CFB -> CfbPane(
+                    container = container,
+                    listState = listState,
+                    listFocus = listFocus,
+                    onPlay = { id -> onPlay(id, Categories.ALL) },
+                    onStatus = { status = it },
+                )
                 visible.isEmpty() -> EmptyMessage(
-                    when (category) {
-                        Categories.FAVORITES ->
+                    when {
+                        category == Categories.FAVORITES ->
                             if (LocalIsTouch.current) "No favorites yet.\nPress and hold a channel, then Add to favorites."
                             else "No favorites yet.\nPress ☰ Menu (or hold OK) on a channel to add it."
-                        Categories.RECENT -> "Channels you watch will show up here."
-                        Categories.SPORTS -> if (lastEpg > 0) "No games on right now." else "Games show up here once the TV guide has loaded."
+                        category == Categories.RECENT -> "Channels you watch will show up here."
+                        category == Categories.SPORTS -> if (lastEpg > 0) "No live games right now." else "Games show up here once the TV guide has loaded."
+                        Categories.leagueOf(category) != null -> "No live ${Categories.leagueOf(category)} games right now."
                         else -> "No channels in this category."
                     },
                 )
@@ -290,7 +314,11 @@ fun HomeScreen(
                         ChannelRow(
                             channel = ch,
                             program = program,
-                            label = if (category == Categories.SPORTS) extras.sportsLabels[ch.id] else null,
+                            label = when {
+                                category == Categories.SPORTS -> extras.sportsLabels[ch.id]
+                                Categories.leagueOf(category) != null -> extras.sports.firstOrNull { it.channel.id == ch.id }?.title
+                                else -> null
+                            },
                             now = now,
                             modifier = if (ch.id == focusTargetId) Modifier.focusRequester(lastChannelFocus) else Modifier,
                             onClick = { onPlay(ch.id, category) },
@@ -306,10 +334,34 @@ fun HomeScreen(
         ChannelMenu(
             channel = ch,
             onFavorite = { scope.launch { repo.toggleFavorite(ch) } },
-            onHide = { scope.launch { repo.setHidden(ch, true) } },
+            onHide = {
+                val i = visible.indexOfFirst { it.id == ch.id }
+                focusAfterHide = (visible.getOrNull(i + 1) ?: visible.getOrNull(i - 1))?.id
+                scope.launch { repo.setHidden(ch, true) }
+            },
             onDismiss = {
                 menuFor = null
-                scope.launch { withFrameNanos { }; runCatching { listFocus.requestFocus() } }
+                val next = focusAfterHide
+                focusAfterHide = null
+                scope.launch {
+                    if (next != null) {
+                        // Wait for the hidden row to leave the list, then focus its neighbour.
+                        for (attempt in 0 until 30) {
+                            withFrameNanos { }
+                            if (visibleNow.none { it.id == ch.id }) break
+                        }
+                        focusTargetId = next
+                        val index = visibleNow.indexOfFirst { it.id == next }
+                        if (index >= 0 && listState.layoutInfo.visibleItemsInfo.none { it.index == index }) {
+                            listState.scrollToItem((index - 3).coerceAtLeast(0))
+                        }
+                        withFrameNanos { }
+                        withFrameNanos { }
+                        if (runCatching { lastChannelFocus.requestFocus() }.isSuccess) return@launch
+                    }
+                    withFrameNanos { }
+                    runCatching { listFocus.requestFocus() }
+                }
             },
         )
     }

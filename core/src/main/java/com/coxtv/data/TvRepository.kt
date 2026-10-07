@@ -56,27 +56,47 @@ object Categories {
     const val ALL = "__all__"
     const val RECENT = "__recent__"
     const val SPORTS = "__sports__"
+    const val CFB = "__cfb__"
+    /** A league's live games: "__league__:NFL" (from the stream server's Sports on now). */
+    const val LEAGUE = "__league__:"
+
+    /** Same list and order as the stream server (coxstream.py LEAGUES) and the web player. */
+    val LEAGUES = listOf(
+        "NFL", "College Football", "NBA", "WNBA", "College Basketball", "MLB", "NHL", "Soccer", "Fighting",
+        "Racing", "Golf", "Tennis", "Cricket", "Rugby", "Handball", "Volleyball", "Cycling", "Snooker & Darts",
+        "College Sports", "Football", "Basketball", "Baseball", "Hockey", "Other",
+    )
+    val LEAGUE_KEYS = LEAGUES.map { LEAGUE + it }
 
     /** Built-in categories in their default order. */
-    val BUILT_INS = listOf(FAVORITES, RECENT, SPORTS, ALL)
+    val BUILT_INS = listOf(FAVORITES, RECENT, SPORTS, CFB, ALL)
+
+    fun leagueOf(key: String): String? = if (key.startsWith(LEAGUE)) key.removePrefix(LEAGUE) else null
 
     fun label(key: String) = when (key) {
         FAVORITES -> "Favorites"
         ALL -> "All Channels"
         RECENT -> "Recent"
         SPORTS -> "Sports on now"
-        else -> key
+        CFB -> "College Football guide"
+        else -> leagueOf(key) ?: key
     }
 
-    fun filter(channels: List<Channel>, key: String, extras: CategoryExtras = CategoryExtras.EMPTY): List<Channel> = when (key) {
-        FAVORITES -> channels.filter { it.favorite }.sortedWith(compareBy({ it.favoritePosition }, { it.sortOrder }))
-        RECENT -> extras.recent
-        SPORTS -> extras.sports.map { it.channel }
-        ALL, "" -> channels
+    fun filter(channels: List<Channel>, key: String, extras: CategoryExtras = CategoryExtras.EMPTY): List<Channel> = when {
+        key == FAVORITES -> channels.filter { it.favorite }.sortedWith(compareBy({ it.favoritePosition }, { it.sortOrder }))
+        key == RECENT -> extras.recent
+        key == SPORTS -> extras.sports.map { it.channel }
+        key == CFB -> emptyList()
+        leagueOf(key) != null -> extras.sports.filter { it.league == leagueOf(key) }.map { it.channel }
+        key == ALL || key.isEmpty() -> channels
         else -> channels.filter { it.groupName == key }
     }
 
-    fun isBuiltIn(key: String) = key in BUILT_INS
+    fun isBuiltIn(key: String) = key in BUILT_INS || key in LEAGUE_KEYS
+
+    /** Keys as the other CoxTV apps and the web player name them (for settings sync). */
+    fun toShared(key: String) = if (key == FAVORITES) "__fav__" else key
+    fun fromShared(key: String) = if (key == "__fav__") FAVORITES else key
 }
 
 /** A live game for "Sports on now". */
@@ -108,6 +128,7 @@ class TvRepository(
     private val db: AppDatabase,
     private val settings: SettingsStore,
     private val http: OkHttpClient,
+    private val link: DeviceLink,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
@@ -155,10 +176,118 @@ class TvRepository(
         if (hide) settings.setHidden(listOf(channel.id), true) else settings.setHidden(ids + channel.id, false)
     }
 
-    /** Games on right now, one entry per game, by league then title; refreshed every minute. */
+    /**
+     * Games on right now, one entry per game, by league then title; refreshed every minute.
+     * Linked apps use the stream server's list (it sees the provider's full guide, including
+     * which programmes are live); otherwise the app's own rules.
+     */
     val sports: Flow<List<SportsGame>> by lazy {
-        combine(grouping, nowPlaying) { g, now -> findGames(g.channels, now) }.flowOn(Dispatchers.Default)
+        combine(grouping, nowPlaying, serverSports) { g, now, server ->
+            if (server != null) fromServer(g, server) else findGames(g.channels, now)
+        }.flowOn(Dispatchers.Default)
     }
+
+    private val serverSports: Flow<DeviceLink.ServerSports?> = flow {
+        while (true) {
+            emit(runCatching { link.sports() }.getOrNull())
+            delay(60_000)
+        }
+    }
+
+    @Volatile private var serverIndex: Pair<ChannelGroups.Result, Map<String, Channel>>? = null
+
+    /** Stream server channel id -> the channel shown for it (any copy maps to its group). */
+    private fun serverIndexFor(g: ChannelGroups.Result): Map<String, Channel> {
+        serverIndex?.let { if (it.first === g) return it.second }
+        val shown = g.channels.associateBy { it.id }
+        val index = HashMap<String, Channel>(g.shownId.size * 2)
+        for ((shownId, copies) in g.sources) {
+            val display = shown[shownId] ?: continue
+            for (c in copies) DeviceLink.serverId(c.streamUrl)?.let { index.putIfAbsent(it, display) }
+        }
+        serverIndex = g to index
+        return index
+    }
+
+    private fun fromServer(g: ChannelGroups.Result, server: DeviceLink.ServerSports): List<SportsGame> {
+        val index = serverIndexFor(g)
+        val seen = HashSet<String>()
+        return server.games.mapNotNull { s ->
+            val ch = index[s.serverId] ?: return@mapNotNull null
+            if (seen.add(ch.id)) SportsGame(ch, s.title, s.league, s.endMs) else null
+        }
+    }
+
+    // ---- College Football guide --------------------------------------------------------
+
+    data class CfbRow(val game: DeviceLink.CfbGame, val channel: Channel?, val mine: Boolean)
+    data class CfbGuide(val week: Int?, val rows: List<CfbRow>)
+
+    private val cfbPoll: Flow<DeviceLink.Cfb?> = flow {
+        while (true) {
+            emit(runCatching { link.cfb() }.getOrNull())
+            delay(60_000)
+        }
+    }
+
+    /** Favorite teams for a sport ("ncaaf"), shared with tv.thecoxhome.com and the other apps. */
+    fun favoriteTeams(sport: String = "ncaaf"): Flow<List<DeviceLink.Team>> = settings.teams.map { teamsOf(it, sport) }
+
+    private fun teamsOf(json: String, sport: String): List<DeviceLink.Team> = runCatching {
+        val a = org.json.JSONObject(json).optJSONArray(sport) ?: return@runCatching emptyList()
+        List(a.length()) { DeviceLink.Team(a.getJSONObject(it).optString("key"), a.getJSONObject(it).optString("display")) }
+    }.getOrDefault(emptyList())
+
+    /** Adds or removes a favorite team (synced like favorites). */
+    suspend fun toggleTeam(team: DeviceLink.Team, sport: String = "ncaaf") {
+        val all = runCatching { org.json.JSONObject(settings.teams.first()) }.getOrDefault(org.json.JSONObject())
+        val current = teamsOf(all.toString(), sport)
+        val next = if (current.any { it.key == team.key }) current.filterNot { it.key == team.key } else current + team
+        all.put(sport, org.json.JSONArray(next.map { org.json.JSONObject().put("key", it.key).put("display", it.display) }))
+        settings.setTeams(all.toString())
+    }
+
+    /** This week's games: live first, then by kickoff; null until loaded (or when not linked). */
+    val cfbGuide: Flow<CfbGuide?> by lazy {
+        combine(grouping, cfbPoll, favoriteTeams()) { g, cfb, teams ->
+            if (cfb == null) return@combine null
+            val index = serverIndexFor(g)
+            val mine = teams.map { it.key }.toSet()
+            CfbGuide(
+                cfb.week,
+                cfb.games.map { game ->
+                    CfbRow(game, game.serverIds.firstNotNullOfOrNull { index[it] }, game.teamKeys.any { it in mine })
+                }.sortedWith(compareBy({ if (it.game.live) 0 else 1 }, { it.game.kickoffSort })),
+            )
+        }.flowOn(Dispatchers.Default)
+    }
+
+    // ---- Settings sync helpers (values as the other apps and the web player store them) ---
+
+    /** Changes whenever favorites (or their order) change. */
+    val favoritesVersion: Flow<List<String>> = db.channels().observeFavoriteIds()
+
+    /** Favorites in order, as stream server channel ids. */
+    suspend fun sharedFavorites(): List<String> {
+        val byId = db.channels().allEntities().associateBy { it.id }
+        return db.channels().favoriteIds().mapNotNull { id -> byId[id]?.let { DeviceLink.serverId(it.streamUrl) } }.distinct()
+    }
+
+    /** Hidden channels, as stream server channel ids. */
+    suspend fun sharedHidden(): List<String> {
+        val byId = db.channels().allEntities().associateBy { it.id }
+        return settings.hidden.first().mapNotNull { id -> byId[id]?.let { DeviceLink.serverId(it.streamUrl) } }.distinct().sorted()
+    }
+
+    private suspend fun localIdsFor(serverIds: List<String>): List<String> {
+        val byServerId = HashMap<String, String>()
+        for (c in db.channels().allEntities()) DeviceLink.serverId(c.streamUrl)?.let { byServerId.putIfAbsent(it, c.id) }
+        return serverIds.mapNotNull { byServerId[it] }.distinct()
+    }
+
+    suspend fun applySharedFavorites(serverIds: List<String>) = db.channels().replaceFavorites(localIdsFor(serverIds))
+
+    suspend fun applySharedHidden(serverIds: List<String>) = settings.replaceHidden(localIdsFor(serverIds))
 
     val categoryExtras: Flow<CategoryExtras> by lazy {
         combine(recentChannels, sports) { recent, games -> CategoryExtras(recent, games) }
@@ -194,7 +323,7 @@ class TvRepository(
         val enabled = order.filter { Categories.isBuiltIn(it) || it in present }
         val enabledSet = enabled.toHashSet()
         enabled.map { CategoryOption(it, true) } +
-            (Categories.BUILT_INS + groups)
+            (Categories.BUILT_INS + Categories.LEAGUE_KEYS + groups)
                 .filter { it !in enabledSet }
                 .map { CategoryOption(it, false) }
     }
@@ -383,26 +512,47 @@ class TvRepository(
             fresh += xtream.liveChannels()
         }
         var detectedEpg: String? = null
+        if (cfg.hasM3u && !cfg.hasXtream && link.token() != null) {
+            // Linked: the stream server's ready-made list (a few hundred KB instead of the
+            // provider's 20 MB playlist), skipped entirely when it hasn't changed.
+            val etag = if (channelCount() > 0) settings.channelsEtag() else null
+            val server = runCatching { link.download("/channels.json", etag) { readServerChannels(it, cfg.m3uUrl) } }
+                .onFailure { Log.w(TAG, "ready-made channel list unavailable; loading the playlist", it) }
+            if (server.isSuccess && server.getOrNull() == null) {
+                Log.i(TAG, "channel list unchanged")
+                settings.setLastChannelRefresh(System.currentTimeMillis())
+                return@withContext channelCount()
+            }
+            server.getOrNull()?.takeIf { it.entries.isNotEmpty() }?.let { list ->
+                val count = saveChannels(m3uEntities(list.entries, 0), list.epgUrl, started)
+                settings.setChannelsEtag(list.etag)
+                return@withContext count
+            }
+        }
         if (cfg.hasM3u) {
             val result = http.getStream(cfg.m3uUrl.trim()) { M3uParser.parse(it.bufferedReader()) }
             detectedEpg = result.epgUrl
-            val offset = fresh.size
-            result.entries.forEachIndexed { i, e ->
-                fresh += ChannelEntity(
-                    id = "m:${e.url}",
-                    sortOrder = offset + i,
-                    number = e.chno?.toDoubleOrNull()?.toInt() ?: (offset + i + 1),
-                    name = e.name.ifBlank { e.tvgName ?: "Channel ${i + 1}" },
-                    logo = e.logo,
-                    groupName = e.group ?: "Uncategorized",
-                    streamUrl = e.url,
-                    epgIdRaw = e.tvgId,
-                    epgId = e.tvgId,
-                )
-            }
+            fresh += m3uEntities(result.entries, fresh.size)
         }
-        if (fresh.isEmpty()) throw IOException("No live channels found")
+        saveChannels(fresh, detectedEpg, started)
+    }
 
+    private fun m3uEntities(entries: List<M3uParser.Entry>, offset: Int) = entries.mapIndexed { i, e ->
+        ChannelEntity(
+            id = "m:${e.url}",
+            sortOrder = offset + i,
+            number = e.chno?.toDoubleOrNull()?.toInt() ?: (offset + i + 1),
+            name = e.name.ifBlank { e.tvgName ?: "Channel ${i + 1}" },
+            logo = e.logo,
+            groupName = e.group ?: "Uncategorized",
+            streamUrl = e.url,
+            epgIdRaw = e.tvgId,
+            epgId = e.tvgId,
+        )
+    }
+
+    private suspend fun saveChannels(fresh: List<ChannelEntity>, detectedEpg: String?, started: Long): Int {
+        if (fresh.isEmpty()) throw IOException("No live channels found")
         // Keep EPG ids that a previous guide import remapped, as long as the source id is unchanged.
         val old = db.channels().allEntities().associateBy { it.id }
         val merged = fresh.map { n ->
@@ -414,7 +564,53 @@ class TvRepository(
         settings.setLastChannelRefresh(System.currentTimeMillis())
         invalidateSearch(channels = true)
         Log.i(TAG, "channels loaded: ${merged.size} in ${(System.nanoTime() - started) / 1_000_000} ms")
-        merged.size
+        return merged.size
+    }
+
+    private suspend fun channelCount(): Int = db.channels().count()
+
+    suspend fun hasChannels(): Boolean = channelCount() > 0
+
+    private class ServerChannels(val entries: List<M3uParser.Entry>, val epgUrl: String?, val etag: String)
+
+    /**
+     * The stream server's ready-made list: {"m3u": tag, "epg": url, "channels": [[name, url,
+     * tvg-id, logo, group, chno], ...]}. Empty when it was built from a different playlist
+     * than this app's (then the app loads its own).
+     */
+    private fun readServerChannels(d: DeviceLink.Download, m3uUrl: String): ServerChannels {
+        val tag = java.security.MessageDigest.getInstance("SHA-256").digest(m3uUrl.trim().toByteArray())
+            .joinToString("") { "%02x".format(it) }.take(16)
+        val entries = ArrayList<M3uParser.Entry>(25_000)
+        var epg: String? = null
+        android.util.JsonReader(d.body.bufferedReader()).use { r ->
+            r.beginObject()
+            while (r.hasNext()) {
+                when (r.nextName()) {
+                    "m3u" -> if (r.nextString() != tag) return ServerChannels(emptyList(), null, d.etag)
+                    "epg" -> epg = r.nextString().ifBlank { null }
+                    "channels" -> {
+                        r.beginArray()
+                        while (r.hasNext()) {
+                            r.beginArray()
+                            val v = Array<String?>(6) { null }
+                            var i = 0
+                            while (r.hasNext()) {
+                                v[i.coerceAtMost(5)] = if (r.peek() == android.util.JsonToken.NULL) { r.nextNull(); null } else r.nextString()
+                                i++
+                            }
+                            r.endArray()
+                            entries += M3uParser.Entry(name = v[0].orEmpty(), url = v[1].orEmpty(), tvgId = v[2], tvgName = null,
+                                logo = v[3], group = v[4], chno = v[5])
+                        }
+                        r.endArray()
+                    }
+                    else -> r.skipValue()
+                }
+            }
+            r.endObject()
+        }
+        return ServerChannels(entries, epg, d.etag)
     }
 
     private val epgMutex = Mutex()
@@ -427,6 +623,15 @@ class TvRepository(
     private suspend fun doRefreshEpg(): Int {
         val cfg = settings.config()
         if (!cfg.isConfigured) return 0
+        if (link.token() != null) {
+            // Linked: the stream server's ready-made 36-hour guide (a few MB, already matched
+            // to the playlist) instead of downloading and parsing the provider's ~100 MB XMLTV.
+            try {
+                return importServerGuide()
+            } catch (e: Exception) {
+                Log.w(TAG, "ready-made guide unavailable; loading the provider's guide", e)
+            }
+        }
         val urls = buildList {
             if (cfg.hasXtream) add(XtreamClient(http, cfg.xtreamServer, cfg.xtreamUser, cfg.xtreamPass).epgUrl())
             if (cfg.hasM3u) {
@@ -457,6 +662,69 @@ class TvRepository(
         } finally {
             files.forEach { it.delete() }
         }
+    }
+
+    private suspend fun importServerGuide(): Int {
+        val started = System.nanoTime()
+        val etag = if (db.programs().count() > 0) settings.guideEtag() else null
+        var total = 0
+        val newEtag = link.download("/guide.json?hours=36", etag) { d ->
+            db.runInTransaction {
+                db.programs().clearBlocking()
+                val batch = ArrayList<ProgramEntity>(2000)
+                android.util.JsonReader(d.body.bufferedReader()).use { r ->
+                    r.beginObject()
+                    while (r.hasNext()) {
+                        if (r.nextName() != "programs") { r.skipValue(); continue }
+                        r.beginObject()
+                        while (r.hasNext()) {
+                            val key = r.nextName()
+                            r.beginArray()
+                            while (r.hasNext()) {
+                                r.beginArray()
+                                val start = r.nextLong() * 1000
+                                val end = r.nextLong() * 1000
+                                val title = r.nextString()
+                                val desc = if (r.hasNext()) r.nextString() else ""
+                                while (r.hasNext()) r.skipValue()
+                                r.endArray()
+                                batch += ProgramEntity(epgId = key, startMs = start, endMs = end, title = title,
+                                    description = desc.ifBlank { null })
+                                if (batch.size >= 2000) {
+                                    db.programs().insertBlocking(batch)
+                                    total += batch.size
+                                    batch.clear()
+                                }
+                            }
+                            r.endArray()
+                        }
+                        r.endObject()
+                    }
+                    r.endObject()
+                }
+                if (batch.isNotEmpty()) {
+                    db.programs().insertBlocking(batch)
+                    total += batch.size
+                }
+                // The server keys programmes by playlist tvg-id, or "#<stream id>" for channels
+                // it matched by name; point every channel at its key.
+                val dao = db.channels()
+                for (ch in dao.allEntitiesBlocking()) {
+                    val key = ch.epgIdRaw?.takeIf { it.isNotBlank() } ?: DeviceLink.serverId(ch.streamUrl)?.let { "#$it" }
+                    if (key != null && key != ch.epgId) dao.setEpgIdBlocking(ch.id, key)
+                }
+            }
+            d.etag
+        }
+        if (newEtag == null) {
+            Log.i(TAG, "guide unchanged")
+        } else {
+            settings.setGuideEtag(newEtag)
+            invalidateSearch(channels = true)
+            Log.i(TAG, "ready-made guide: $total programs in ${(System.nanoTime() - started) / 1_000_000} ms")
+        }
+        settings.setLastEpgRefresh(System.currentTimeMillis())
+        return if (newEtag == null) db.programs().count() else total
     }
 
     private fun importEpg(files: List<File>): Int {

@@ -97,6 +97,8 @@ function categoryLabel(key as dynamic) as string
     if key = "__all__" then return "All Channels"
     if key = "__recent__" then return "Recent"
     if key = "__sports__" then return "Sports on now"
+    if key = "__cfb__" then return "College Football guide"
+    if Left(key, 11) = "__league__:" then return Mid(key, 12)
     return key
 end function
 
@@ -155,7 +157,7 @@ function categoryOrder() as object
             return out
         end if
     end if
-    return ["__fav__", "__recent__", "__sports__", "__all__"]
+    return ["__fav__", "__recent__", "__sports__", "__cfb__", "__all__"]
 end function
 
 function missingBuiltIns(v as object) as object
@@ -176,8 +178,45 @@ sub setCategoryOrder(keys as object)
 end sub
 
 function isBuiltInCategory(key as dynamic) as boolean
-    return key = "__fav__" or key = "__all__" or key = "__recent__" or key = "__sports__"
+    if key = invalid then return false
+    return key = "__fav__" or key = "__all__" or key = "__recent__" or key = "__sports__" or key = "__cfb__" or Left(key, 11) = "__league__:"
 end function
+
+' Leagues of Sports on now, in order: the same list as the stream server (coxstream.py).
+function sportsLeagues() as object
+    return ["NFL", "College Football", "NBA", "WNBA", "College Basketball", "MLB", "NHL", "Soccer", "Fighting", "Racing", "Golf", "Tennis", "Cricket", "Rugby", "Handball", "Volleyball", "Cycling", "Snooker & Darts", "College Sports", "Football", "Basketball", "Baseball", "Hockey", "Other"]
+end function
+
+' Favorite teams ({"ncaaf": [{key, display}]}), shared with tv.thecoxhome.com and the other apps.
+function favoriteTeams() as object
+    v = ParseJson(regRead("teams", "{}"))
+    if type(v) <> "roAssociativeArray" then v = {}
+    if type(v.ncaaf) <> "roArray" then v.ncaaf = []
+    return v
+end function
+
+function isFavoriteTeam(key as string) as boolean
+    for each t in favoriteTeams().ncaaf
+        if t.key = key then return true
+    end for
+    return false
+end function
+
+sub toggleTeam(key as string, display as string)
+    teams = favoriteTeams()
+    out = []
+    found = false
+    for each t in teams.ncaaf
+        if t.key = key then
+            found = true
+        else
+            out.Push(t)
+        end if
+    end for
+    if not found then out.Push({ key: key, display: display })
+    teams.ncaaf = out
+    regWrite("teams", FormatJson(teams))
+end sub
 
 ' ---- Recently watched (newest first) and hidden channels: lists of channel keys ----
 

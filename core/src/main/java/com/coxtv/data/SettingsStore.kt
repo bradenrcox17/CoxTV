@@ -27,7 +27,7 @@ data class LastWatched(val channelId: String, val category: String)
 
 private val Context.dataStore by preferencesDataStore(name = "settings")
 
-private val DEFAULT_CATEGORIES = listOf(Categories.FAVORITES, Categories.RECENT, Categories.SPORTS, Categories.ALL)
+private val DEFAULT_CATEGORIES = listOf(Categories.FAVORITES, Categories.RECENT, Categories.SPORTS, Categories.CFB, Categories.ALL)
 private const val RECENT_MAX = 20
 private const val SEARCHES_MAX = 8
 
@@ -61,6 +61,10 @@ class SettingsStore(private val context: Context) {
         val deviceName = stringPreferencesKey("device_name")
         val useServer = booleanPreferencesKey("use_server")
         val searches = stringPreferencesKey("searches")
+        val guideEtag = stringPreferencesKey("guide_etag")
+        val channelsEtag = stringPreferencesKey("channels_etag")
+        val teams = stringPreferencesKey("teams")
+        val syncState = stringPreferencesKey("sync_state")
     }
 
     private val data get() = context.dataStore.data
@@ -86,6 +90,9 @@ class SettingsStore(private val context: Context) {
         val saved = runCatching { readList(raw) }.getOrDefault(DEFAULT_CATEGORIES)
         if (prefs[Keys.categoriesV2] == true) saved else withNewBuiltIns(saved)
     }
+
+    /** True once the category list was saved (not just the defaults). */
+    suspend fun hasSavedCategories(): Boolean = data.first()[Keys.categories] != null
 
     suspend fun setCategoryOrder(keys: List<String>) {
         context.dataStore.edit {
@@ -160,6 +167,37 @@ class SettingsStore(private val context: Context) {
             val list = prefs[Keys.searches]?.let { runCatching { readList(it) }.getOrNull() }.orEmpty()
             prefs[Keys.searches] = JSONArray(list - query).toString()
         }
+    }
+
+    // Versions of the server's ready-made guide and channel list this app has (ETags).
+    suspend fun guideEtag(): String? = data.first()[Keys.guideEtag]
+    suspend fun channelsEtag(): String? = data.first()[Keys.channelsEtag]
+
+    suspend fun setGuideEtag(etag: String?) {
+        context.dataStore.edit { if (etag.isNullOrBlank()) it.remove(Keys.guideEtag) else it[Keys.guideEtag] = etag }
+    }
+
+    suspend fun setChannelsEtag(etag: String?) {
+        context.dataStore.edit { if (etag.isNullOrBlank()) it.remove(Keys.channelsEtag) else it[Keys.channelsEtag] = etag }
+    }
+
+    /** Favorite teams (JSON {"ncaaf": [{"key", "display"}]}), shared through settings sync. */
+    val teams: Flow<String> = data.map { it[Keys.teams] ?: "{}" }
+
+    suspend fun setTeams(json: String) {
+        context.dataStore.edit { it[Keys.teams] = json }
+    }
+
+    /** Settings sync bookkeeping (JSON: field -> {"t": server version, "h": value hash}). */
+    suspend fun syncState(): String = data.first()[Keys.syncState] ?: "{}"
+
+    suspend fun setSyncState(json: String) {
+        context.dataStore.edit { it[Keys.syncState] = json }
+    }
+
+    /** Replaces the hidden channels (settings sync). */
+    suspend fun replaceHidden(ids: Collection<String>) {
+        context.dataStore.edit { it[Keys.hidden] = JSONArray(ids.distinct()).toString() }
     }
 
     suspend fun config(): SourceConfig = config.first()

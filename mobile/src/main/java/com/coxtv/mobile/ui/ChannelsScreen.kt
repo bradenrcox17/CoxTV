@@ -93,13 +93,17 @@ fun ChannelsScreen(
 
     val cat = category ?: Categories.ALL
     val visible = remember(all, cat, extras) { Categories.filter(all, cat, extras) }
-    val counts = remember(all, extras) {
-        all.groupingBy { it.groupName }.eachCount() + mapOf(
-            Categories.ALL to all.size,
-            Categories.FAVORITES to all.count { it.favorite },
-            Categories.RECENT to extras.recent.size,
-            Categories.SPORTS to extras.sports.size,
-        )
+    val cfbGuide by repo.cfbGuide.collectAsStateWithLifecycle(null)
+    val counts = remember(all, extras, cfbGuide) {
+        all.groupingBy { it.groupName }.eachCount() +
+            Categories.LEAGUE_KEYS.associateWith { 0 } +
+            extras.sports.groupingBy { Categories.LEAGUE + it.league }.eachCount() +
+            mapOf(
+                Categories.ALL to all.size,
+                Categories.FAVORITES to all.count { it.favorite },
+                Categories.RECENT to extras.recent.size,
+                Categories.SPORTS to extras.sports.size,
+            ) + (cfbGuide?.let { mapOf(Categories.CFB to it.rows.size) } ?: emptyMap())
     }
     val gridState = rememberLazyGridState()
     LaunchedEffect(cat) { gridState.scrollToItem(0) }
@@ -108,19 +112,29 @@ fun ChannelsScreen(
         Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 4.dp), verticalAlignment = Alignment.Bottom) {
             Text(Categories.label(cat), style = MaterialTheme.typography.headlineSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
             Spacer(Modifier.width(10.dp))
-            Text("${visible.size} channels", style = MaterialTheme.typography.bodyMedium, color = CoxColors.TextDim)
+            Text(
+                when {
+                    cat == Categories.CFB -> cfbGuide?.let { g -> "${g.rows.size} games" + (g.week?.let { " · week $it" } ?: "") }.orEmpty()
+                    cat == Categories.SPORTS || Categories.leagueOf(cat) != null -> "${visible.size} live games"
+                    else -> "${visible.size} channels"
+                },
+                style = MaterialTheme.typography.bodyMedium,
+                color = CoxColors.TextDim,
+            )
         }
         CategoryChips(cats, cat, counts, onCategory)
         Spacer(Modifier.height(6.dp))
 
         when {
             channels == null -> Unit
+            cat == Categories.CFB -> CfbList(container, onPlay = onPlay)
             visible.isEmpty() -> Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
                 Text(
-                    when (cat) {
-                        Categories.FAVORITES -> "No favorites yet.\nTap the heart on a channel to add it."
-                        Categories.RECENT -> "Channels you watch will show up here."
-                        Categories.SPORTS -> "No games on right now (or the TV guide hasn't loaded yet)."
+                    when {
+                        cat == Categories.FAVORITES -> "No favorites yet.\nTap the heart on a channel to add it."
+                        cat == Categories.RECENT -> "Channels you watch will show up here."
+                        cat == Categories.SPORTS -> "No live games right now (or the TV guide hasn't loaded yet)."
+                        Categories.leagueOf(cat) != null -> "No live ${Categories.leagueOf(cat)} games right now."
                         else -> "No channels in this category."
                     },
                     textAlign = TextAlign.Center,
@@ -137,7 +151,11 @@ fun ChannelsScreen(
                     ChannelRow(
                         channel = ch,
                         program = ch.epgId?.let { nowPlaying[it] },
-                        label = if (cat == Categories.SPORTS) extras.sportsLabels[ch.id] else null,
+                        label = when {
+                            cat == Categories.SPORTS -> extras.sportsLabels[ch.id]
+                            Categories.leagueOf(cat) != null -> extras.sports.firstOrNull { it.channel.id == ch.id }?.title
+                            else -> null
+                        },
                         now = now,
                         onClick = { onPlay(ch.id) },
                         onToggleFavorite = { scope.launch { repo.toggleFavorite(ch) } },

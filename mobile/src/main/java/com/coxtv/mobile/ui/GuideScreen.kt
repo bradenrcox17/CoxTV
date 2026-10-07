@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.coxtv.AppContainer
 import com.coxtv.data.Categories
+import kotlinx.coroutines.flow.map
 import com.coxtv.data.CategoryExtras
 import com.coxtv.data.db.Channel
 import com.coxtv.data.db.ProgramEntity
@@ -67,7 +68,7 @@ fun GuideScreen(
     val fmt = rememberTimeFormatter()
     val now by rememberNow(30_000)
     val channels by repo.channels.collectAsStateWithLifecycle(null)
-    val cats by repo.categories.collectAsStateWithLifecycle(emptyList())
+    val cats by remember { repo.categories.map { list -> list - Categories.CFB } }.collectAsStateWithLifecycle(emptyList())
     val guideVersion by container.settings.lastEpgRefresh.collectAsStateWithLifecycle(0L)
     val extras by repo.categoryExtras.collectAsStateWithLifecycle(CategoryExtras.EMPTY)
     val all = channels.orEmpty()

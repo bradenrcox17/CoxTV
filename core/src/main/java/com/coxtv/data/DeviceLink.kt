@@ -147,6 +147,102 @@ class DeviceLink(private val settings: SettingsStore, http: OkHttpClient) {
         }
     }
 
+    // ---- Data from the server (live sports, College Football guide, settings, ready-made files)
+
+    data class ServerGame(val serverId: String, val title: String, val league: String, val endMs: Long)
+    data class ServerSports(val leagues: List<String>, val games: List<ServerGame>)
+
+    /** Live games right now, as the server sees them (its rules use the full provider guide). */
+    suspend fun sports(): ServerSports? {
+        val json = getJson("/sports") ?: return null
+        val leagues = json.optJSONArray("leagues") ?: JSONArray()
+        val games = json.optJSONArray("games") ?: JSONArray()
+        return ServerSports(
+            List(leagues.length()) { leagues.getString(it) },
+            List(games.length()) { i ->
+                val g = games.getJSONObject(i)
+                ServerGame(g.optString("id"), g.optString("title"), g.optString("league"), g.optLong("end") * 1000)
+            },
+        )
+    }
+
+    data class CfbGame(
+        val matchup: String, val kickoff: String, val kickoffSort: String, val network: String,
+        val teamKeys: List<String>, val ranks: List<Int?>, val conference: String,
+        val live: Boolean, val score: String, val period: String, val clock: String, val serverIds: List<String>,
+    )
+    data class Team(val key: String, val display: String)
+    data class Cfb(val week: Int?, val games: List<CfbGame>, val teams: List<Team>)
+
+    /** The College Football guide (from tv.thecoxhome.com) with the channels showing each game. */
+    suspend fun cfb(): Cfb? {
+        val json = getJson("/cfb") ?: return null
+        val games = json.optJSONArray("games") ?: JSONArray()
+        fun strings(a: JSONArray?) = if (a == null) emptyList() else List(a.length()) { a.optString(it) }
+        return Cfb(
+            json.optInt("week").takeIf { it > 0 },
+            List(games.length()) { i ->
+                val g = games.getJSONObject(i)
+                val ranks = g.optJSONArray("ranks")
+                CfbGame(
+                    matchup = g.optString("matchup"), kickoff = g.optString("kickoff"),
+                    kickoffSort = g.optString("kickoff_sort"), network = g.optString("channel_name"),
+                    teamKeys = strings(g.optJSONArray("team_keys")),
+                    ranks = if (ranks == null) emptyList() else List(ranks.length()) { r -> ranks.optInt(r).takeIf { it > 0 } },
+                    conference = g.optJSONArray("conferences")?.optString(0).orEmpty(),
+                    live = g.optString("game_state") == "live", score = g.optString("score").takeIf { it != "null" }.orEmpty(),
+                    period = g.optString("period").takeIf { it != "null" }.orEmpty(),
+                    clock = g.optString("clock").takeIf { it != "null" }.orEmpty(),
+                    serverIds = strings(g.optJSONArray("channels")),
+                )
+            },
+            json.optJSONArray("teams").let { a ->
+                if (a == null) emptyList() else List(a.length()) { Team(a.getJSONObject(it).optString("key"), a.getJSONObject(it).optString("display")) }
+            },
+        )
+    }
+
+    /** Synced settings: {"field": {"v": value, "t": ms}}. PUT sends changed fields (newest wins). */
+    suspend fun prefs(put: JSONObject? = null): JSONObject? {
+        val token = token() ?: return null
+        val request = Request.Builder().url("${SetupCodes.SERVER}/d/$token/prefs").apply {
+            if (put != null) put(JSONObject().put("fields", put).toString().toRequestBody("application/json".toMediaType()))
+        }.build()
+        return withContext(Dispatchers.IO) {
+            http.newCall(request).execute().use { resp ->
+                if (!resp.isSuccessful) throw IOException("HTTP ${resp.code}")
+                JSONObject(resp.body.string()).optJSONObject("fields") ?: JSONObject()
+            }
+        }
+    }
+
+    /** A ready-made file from the server; null when the app already has [etag] (304). */
+    class Download(val etag: String, val body: java.io.InputStream)
+
+    suspend fun <T> download(path: String, etag: String?, read: (Download) -> T): T? {
+        val token = token() ?: throw IOException("Not linked")
+        val request = Request.Builder().url("${SetupCodes.SERVER}/d/$token$path")
+            .apply { if (!etag.isNullOrBlank()) header("If-None-Match", etag) }.build()
+        return withContext(Dispatchers.IO) {
+            http.newCall(request).execute().use { resp ->
+                when {
+                    resp.code == 304 -> null
+                    !resp.isSuccessful -> throw IOException("The stream server answered HTTP ${resp.code}")
+                    else -> read(Download(resp.header("ETag").orEmpty(), resp.body.byteStream()))
+                }
+            }
+        }
+    }
+
+    private suspend fun getJson(path: String): JSONObject? {
+        val token = token() ?: return null
+        return withContext(Dispatchers.IO) {
+            http.newCall(Request.Builder().url("${SetupCodes.SERVER}/d/$token$path").build()).execute().use { resp ->
+                if (!resp.isSuccessful) null else JSONObject(resp.body.string())
+            }
+        }
+    }
+
     companion object {
         private val ID_RE = Regex("""/(\d+)(?:\.[A-Za-z0-9]+)?$""")
 

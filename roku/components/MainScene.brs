@@ -9,7 +9,7 @@ sub init()
     ' Keeping it render-owned means the UI never blocks on the task thread.
     bus = CreateObject("roSGNode", "Node")
     bus.addField("request", "assocarray", true)
-    bus.addFields({ ready: false, status: "", playlistState: "idle", epgState: "idle", categories: [], channelCount: 0, epgVersion: 0, playerOpen: false, playingSince: 0 })
+    bus.addFields({ ready: false, status: "", playlistState: "idle", epgState: "idle", categories: [], channelCount: 0, epgVersion: 0, playerOpen: false, playingSince: 0, prefsVersion: 0 })
     ' playerOpen / playingSince (epoch secs, 0 = not playing) come from the player, so the data
     ' service can hold heavy guide work until a starting stream has settled.
     m.global.addFields({ bus: bus })

@@ -5,6 +5,7 @@ import android.os.Build
 import android.provider.Settings
 import android.util.Log
 import com.coxtv.data.DeviceLink
+import com.coxtv.data.PrefsSync
 import com.coxtv.data.SettingsStore
 import com.coxtv.data.SetupCodes
 import com.coxtv.data.TvRepository
@@ -16,6 +17,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 
 /** Implemented by each app's Application class so shared code (workers) can reach the container. */
@@ -35,16 +38,25 @@ data class AppInfo(
 class AppContainer(private val context: Context, private val appInfo: AppInfo) {
     val settings = SettingsStore(context)
     val database = AppDatabase.create(context)
-    val repository = TvRepository(context, database, settings, Http.client)
+    val link = DeviceLink(settings, Http.client)
+    val repository = TvRepository(context, database, settings, Http.client, link)
+    val sync = PrefsSync(settings, repository, link)
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val updates = UpdateManager(context, Http.client, appInfo, appScope)
-    val link = DeviceLink(settings, Http.client)
 
     /** This app as the stream server should list it (named after the device, e.g. "Living Room"). */
     fun device(): SetupCodes.Device {
         val name = runCatching { Settings.Global.getString(context.contentResolver, "device_name") }.getOrNull()
             ?.takeIf { it.isNotBlank() } ?: Build.MODEL.orEmpty()
         return SetupCodes.Device(appInfo.deviceKind, name)
+    }
+
+    init {
+        // Settings sync runs while the app is open and linked (from launch, or as soon as a
+        // setup code links it).
+        appScope.launch {
+            settings.isLinked.distinctUntilChanged().collectLatest { linked -> if (linked) sync.run() }
+        }
     }
 
     private var startupDone = false

@@ -84,7 +84,11 @@ sub buildCategories(focusIndex as integer)
     for each k in enabled
         addRow(root, k, categoryLabel(k), countText(k, counts), true, true)
     end for
-    for each k in ["__fav__", "__recent__", "__sports__", "__all__"]
+    builtIns = ["__fav__", "__recent__", "__sports__", "__cfb__", "__all__"]
+    for each league in sportsLeagues()
+        builtIns.Push("__league__:" + league)
+    end for
+    for each k in builtIns
         if not enabledSet.DoesExist(k) then addRow(root, k, categoryLabel(k), countText(k, counts), false, true)
     end for
     for each k in groups
@@ -100,7 +104,11 @@ function countText(key as string, counts as object) as string
     else if key = "__recent__" then
         n = recentKeys().Count()
     else if key = "__sports__" then
-        return "games on now"
+        return "live games now"
+    else if key = "__cfb__" then
+        return "this week's games"
+    else if Left(key, 11) = "__league__:" then
+        return "live games"
     else if key = "__all__" then
         n = m.global.bus.channelCount
     else
