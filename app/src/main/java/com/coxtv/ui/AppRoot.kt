@@ -17,7 +17,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Text
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import com.coxtv.AppContainer
+import com.coxtv.data.Categories
 import com.coxtv.ui.components.CoxWordmark
 import com.coxtv.ui.guide.GuideScreen
 import com.coxtv.ui.home.HomeScreen
@@ -70,6 +74,31 @@ fun AppRoot(container: AppContainer) {
                 listOf(Screen.Home, Screen.Player(last.channelId, last.category))
             } else {
                 listOf(Screen.Home)
+            }
+        }
+    }
+
+    // Remote control (phone app, tv.thecoxhome.com) while the app is on screen.
+    val lifecycle = LocalLifecycleOwner.current
+    LaunchedEffect(lifecycle) {
+        lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) { container.link.listen() }
+    }
+    LaunchedEffect(Unit) {
+        container.link.commands.collect { c ->
+            val top = stack.last()
+            if (top is Screen.Login || top == Screen.Loading) return@collect
+            when (c.cmd) {
+                "play" -> {
+                    val ch = container.repository.channelForServerId(c.channelId) ?: return@collect
+                    // The player switches in place; from anywhere else, open it.
+                    stack = if (top is Screen.Player) stack.dropLast(1) + top.copy(channelId = ch.id)
+                    else stack + Screen.Player(ch.id, Categories.ALL)
+                }
+                "stop" -> if (top is Screen.Player) pop()
+                "prev" -> if (top !is Screen.Player) {
+                    val last = container.settings.lastWatched() ?: return@collect
+                    stack = stack + Screen.Player(last.channelId, last.category)
+                }
             }
         }
     }

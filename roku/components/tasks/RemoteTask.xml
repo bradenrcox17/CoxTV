@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Remote control: long-polls the stream server for commands sent to this Roku from the phone
+  app or tv.thecoxhome.com (play a channel, channel up/down, previous, stop), and reports what
+  is playing. Runs while the app is open and the Roku is linked (set up with a code).
+-->
+<component name="RemoteTask" extends="Task">
+  <interface>
+    <!-- in: what's playing ({ name, id }), or {} when nothing is -->
+    <field id="playing" type="assocarray" />
+    <!-- in: set when playback stops, so the server frees the channel sooner -->
+    <field id="leave" type="boolean" alwaysNotify="true" />
+    <!-- out: { cmd, id, name } -->
+    <field id="command" type="assocarray" alwaysNotify="true" />
+    <!-- out: this Roku was unlinked on tv.thecoxhome.com -->
+    <field id="unlinked" type="boolean" alwaysNotify="true" />
+  </interface>
+  <script type="text/brightscript" uri="RemoteTask.brs" />
+  <script type="text/brightscript" uri="pkg:/components/common/Utils.brs" />
+</component>

@@ -15,6 +15,7 @@ class CoxTvApp : Application(), CoxTvApplication {
                 versionName = BuildConfig.VERSION_NAME,
                 githubRepo = BuildConfig.GITHUB_REPO,
                 apkAssetName = BuildConfig.APK_ASSET,
+                deviceKind = "firetv",
             ),
         )
         EpgRefreshWorker.schedulePeriodic(this)

@@ -34,11 +34,12 @@ fun buildLivePlayer(context: Context): ExoPlayer {
         }
 }
 
-fun ExoPlayer.playChannel(channel: Channel) {
+/** Plays a channel from [url]: its own link, or the stream server's (see DeviceLink). */
+fun ExoPlayer.playChannel(channel: Channel, url: String = channel.streamUrl) {
     val item = MediaItem.Builder()
-        .setUri(channel.streamUrl)
+        .setUri(url)
         .setMediaId(channel.id)
-        .apply { if (channel.streamUrl.contains(".m3u8", ignoreCase = true)) setMimeType(MimeTypes.APPLICATION_M3U8) }
+        .apply { if (url.contains(".m3u8", ignoreCase = true)) setMimeType(MimeTypes.APPLICATION_M3U8) }
         .build()
     setMediaItem(item)
     prepare()

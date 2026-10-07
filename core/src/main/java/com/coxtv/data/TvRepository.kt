@@ -133,6 +133,15 @@ class TvRepository(
     /** The id shown for any channel id (copies map to their group's channel). */
     suspend fun shownId(id: String): String = currentGrouping().shownId[id] ?: id
 
+    /** The shown channel for a stream server channel id (sent from the remote), if this playlist has it. */
+    suspend fun channelForServerId(serverId: String): Channel? {
+        val g = currentGrouping()
+        val match = g.sources.values.asSequence().flatten().firstOrNull { DeviceLink.serverId(it.streamUrl) == serverId }
+            ?: return null
+        val shown = g.shownId[match.id] ?: match.id
+        return g.channels.firstOrNull { it.id == shown }
+    }
+
     /** Recently watched channels, newest first. */
     val recentChannels: Flow<List<Channel>> = combine(grouping, settings.recent) { g, ids ->
         val byId = g.channels.associateBy { it.id }
@@ -343,8 +352,15 @@ class TvRepository(
     }
 
     /** Sets up from a code shown on tv.thecoxhome.com: fetches the links, then connects. */
-    suspend fun connectWithSetupCode(code: String): Int {
-        val links = SetupCodes.redeem(http, code)
+    /**
+     * Sets up from a code: links this app with the stream server and loads the playlist. An
+     * Xtream login already in use is kept (its favorites are saved by Xtream channel), so the
+     * code then only links the app; returns null in that case, else the channel count.
+     */
+    suspend fun connectWithSetupCode(code: String, device: SetupCodes.Device): Int? {
+        val links = SetupCodes.redeem(http, code, device)
+        if (links.deviceToken.isNotBlank()) settings.setDeviceLink(links.deviceToken, links.deviceName)
+        if (settings.config().hasXtream) return null
         return connect(SourceConfig(m3uUrl = links.m3u, epgUrl = links.epg))
     }
 

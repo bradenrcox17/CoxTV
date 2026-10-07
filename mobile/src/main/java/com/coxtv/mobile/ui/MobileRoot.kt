@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
@@ -38,6 +39,7 @@ private enum class Tab(val label: String, val icon: ImageVector) {
     Channels("Channels", Icons.AutoMirrored.Filled.List),
     Guide("Guide", Icons.Filled.DateRange),
     Search("Search", Icons.Filled.Search),
+    Remote("Remote", Icons.AutoMirrored.Filled.Send),
     Settings("Settings", Icons.Filled.Settings),
 }
 
@@ -108,6 +110,7 @@ fun MobileRoot(container: AppContainer, activity: MainActivity) {
                         onPlay = { id -> play(id, cat) },
                     )
                     Tab.Search -> SearchScreen(container = container, onPlay = { id, group -> play(id, group) })
+                    Tab.Remote -> RemoteScreen(container = container, onSetUp = { push(Screen.Setup(canGoBack = true)) })
                     Tab.Settings -> SettingsScreen(
                         container = container,
                         onEditSources = { push(Screen.Setup(canGoBack = true)) },

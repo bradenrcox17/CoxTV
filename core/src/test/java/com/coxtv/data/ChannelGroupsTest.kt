@@ -113,3 +113,13 @@ class SportsRulesV2Test {
         assertEquals(Sports.gameKey("NFL Football"), Sports.gameKey("NFL Football  NEW"))
     }
 }
+
+class DeviceLinkTest {
+    @Test fun serverIdIsTheStreamNumber() {
+        assertEquals("12345", DeviceLink.serverId("http://host.example:8080/live/user/pass/12345.ts"))
+        assertEquals("12345", DeviceLink.serverId("http://host.example/user/pass/12345"))
+        assertEquals("777", DeviceLink.serverId("https://host.example/live/u/p/777.m3u8?token=abc"))
+        assertEquals(null, DeviceLink.serverId("http://host.example/channel/espn.m3u8"))
+        assertEquals(null, DeviceLink.serverId("not a url"))
+    }
+}

@@ -44,6 +44,7 @@ import com.coxtv.AppContainer
 import com.coxtv.data.SetupCodes
 import com.coxtv.data.SourceConfig
 import com.coxtv.mobile.ui.theme.CoxColors
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @Composable
@@ -82,8 +83,9 @@ fun SetupScreen(container: AppContainer, canGoBack: Boolean, onBack: () -> Unit,
         message = "Loading channels… large playlists can take a minute."
         scope.launch {
             try {
-                val count = container.repository.connectWithSetupCode(code)
-                message = "Loaded $count channels"
+                val count = container.repository.connectWithSetupCode(code, container.device())
+                message = if (count == null) "Linked. Your Xtream login was kept." else "Loaded $count channels"
+                if (count == null) delay(1_500)
                 onConnected()
             } catch (e: Exception) {
                 isError = true

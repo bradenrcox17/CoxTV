@@ -119,8 +119,9 @@ fun PlayerScreen(
     var retries by remember { mutableIntStateOf(0) }
     var retryNonce by remember { mutableIntStateOf(0) }
     var firstTune by remember { mutableStateOf(true) }
-    // Copies of this channel (HD/FHD/backup feeds): if one won't start, the next is tried.
-    var sources by remember { mutableStateOf<List<Channel>>(emptyList()) }
+    // Ways to play this channel, tried in turn until one starts: through the stream server
+    // (when linked), then each copy of the channel (HD/FHD/backup feeds) directly.
+    var sources by remember { mutableStateOf<List<Pair<Channel, String>>>(emptyList()) }
     var sourceIndex by remember { mutableIntStateOf(0) }
     var sourcePlayed by remember { mutableStateOf(false) }
     var playingSince by remember { mutableStateOf(0L) }
@@ -179,6 +180,7 @@ fun PlayerScreen(
         onDispose {
             player.removeListener(listener)
             player.release()
+            container.appScope.launch { container.link.leave() } // frees the channel on the server sooner
         }
     }
 
@@ -223,7 +225,10 @@ fun PlayerScreen(
     }
 
     LaunchedEffect(current?.id) {
-        sources = current?.let { repo.sourcesFor(it) }.orEmpty()
+        val ch = current
+        sources = if (ch == null) emptyList() else {
+            listOfNotNull(container.link.streamUrl(ch)?.let { ch to it }) + repo.sourcesFor(ch).map { it to it.streamUrl }
+        }
         sourceIndex = 0
     }
 
@@ -236,15 +241,16 @@ fun PlayerScreen(
     }
 
     // Tune (debounced so quick swipes skim channels without starting every stream).
-    LaunchedEffect(current?.streamUrl, retryNonce, sourceIndex) {
+    LaunchedEffect(current?.streamUrl, retryNonce, sourceIndex, sources) {
         val channel = current ?: return@LaunchedEffect
-        val ch = sources.getOrNull(sourceIndex)?.takeIf { sources.first().id == channel.id } ?: channel
+        if (sources.firstOrNull()?.first?.id != channel.id) return@LaunchedEffect // still looking them up
+        val (ch, url) = sources.getOrNull(sourceIndex) ?: sources.first()
         if (!firstTune) delay(350)
         firstTune = false
         buffering = true
         sourcePlayed = false
         playingSince = 0L
-        player.playChannel(ch)
+        player.playChannel(ch, url)
         container.settings.setLastWatched(channel.id, category)
     }
 

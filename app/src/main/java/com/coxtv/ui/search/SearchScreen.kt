@@ -2,6 +2,7 @@ package com.coxtv.ui.search
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -17,6 +18,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -31,13 +33,16 @@ import androidx.tv.material3.LocalContentColor
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.coxtv.AppContainer
+import com.coxtv.data.Categories
 import com.coxtv.data.SearchResult
 import com.coxtv.ui.components.Clock
 import com.coxtv.ui.components.FocusTile
 import com.coxtv.ui.components.LocalIsTouch
 import com.coxtv.ui.components.TvTextField
+import com.coxtv.ui.components.collectAsStateCompat
 import com.coxtv.ui.theme.CoxColors
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
  * Live search: shows airing now (Braves, White Sox) and channels by name (ESPN, SEC Network),
@@ -51,6 +56,17 @@ fun SearchScreen(container: AppContainer, onPlay: (channelId: String, group: Str
     var searching by remember { mutableStateOf(false) }
     var searchedFor by remember { mutableStateOf("") }
     val fieldFocus = remember { FocusRequester() }
+    val scope = rememberCoroutineScope()
+    val searches by container.settings.searches.collectAsStateCompat(emptyList())
+    val games by repo.sports.collectAsStateCompat(emptyList())
+
+    fun open(channelId: String, group: String) {
+        val q = query.trim()
+        scope.launch {
+            if (q.length >= 2) container.settings.addSearch(q)
+            onPlay(channelId, group)
+        }
+    }
 
     LaunchedEffect(Unit) {
         runCatching { fieldFocus.requestFocus() }
@@ -94,7 +110,7 @@ fun SearchScreen(container: AppContainer, onPlay: (channelId: String, group: Str
         Spacer(Modifier.height(12.dp))
         Text(
             when {
-                query.trim().length < 2 -> "Type at least 2 letters"
+                query.trim().length < 2 -> if (searches.isNotEmpty() || games.isNotEmpty()) "" else "Type at least 2 letters"
                 searching && results.isEmpty() -> "Searching..."
                 results.isNotEmpty() -> "${results.size} matches for \"$searchedFor\""
                 searchedFor.isNotEmpty() -> "Nothing on now matches \"$searchedFor\""
@@ -105,9 +121,55 @@ fun SearchScreen(container: AppContainer, onPlay: (channelId: String, group: Str
         )
         Spacer(Modifier.height(8.dp))
         LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxSize()) {
-            items(results, key = { it.channelId + "|" + it.title }) { r ->
-                ResultRow(r, onClick = { onPlay(r.channelId, r.groupName) })
+            if (query.trim().length < 2) {
+                // Before typing: recent searches, and games on now.
+                if (searches.isNotEmpty()) {
+                    item(key = "h-recent") { Heading("Recent searches") }
+                    items(searches, key = { "s-$it" }) { q ->
+                        SimpleRow(q, onClick = { query = q })
+                    }
+                    item(key = "clear") {
+                        SimpleRow("Clear recent searches", dim = true, onClick = { scope.launch { container.settings.clearSearches() } })
+                    }
+                }
+                if (games.isNotEmpty()) {
+                    item(key = "h-games") { Heading("Games on now") }
+                    items(games.take(6), key = { "g-" + it.channel.id + it.title }) { g ->
+                        ResultRow(
+                            SearchResult(g.channel.id, g.title, g.channel.name, g.channel.groupName, g.endMs),
+                            onClick = { onPlay(g.channel.id, Categories.SPORTS) },
+                        )
+                    }
+                }
             }
+            items(results, key = { it.channelId + "|" + it.title }) { r ->
+                ResultRow(r, onClick = { open(r.channelId, r.groupName) })
+            }
+        }
+    }
+}
+
+@Composable
+private fun Heading(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.labelLarge,
+        color = CoxColors.Accent,
+        modifier = Modifier.padding(top = 10.dp, bottom = 2.dp, start = 4.dp),
+    )
+}
+
+@Composable
+private fun SimpleRow(text: String, dim: Boolean = false, onClick: () -> Unit) {
+    FocusTile(onClick = onClick, focusedScale = 1.01f, modifier = Modifier.fillMaxWidth().height(48.dp)) {
+        Box(Modifier.fillMaxSize().padding(horizontal = 16.dp), contentAlignment = Alignment.CenterStart) {
+            Text(
+                text,
+                style = MaterialTheme.typography.titleSmall,
+                color = if (dim) LocalContentColor.current.copy(alpha = 0.7f) else LocalContentColor.current,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }

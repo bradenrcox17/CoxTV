@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <component name="PlayerScreen" extends="BaseScreen">
+  <interface>
+    <!-- "up" / "down" / "prev" from the remote (see MainScene) -->
+    <field id="remote" type="string" alwaysNotify="true" />
+  </interface>
   <script type="text/brightscript" uri="PlayerScreen.brs" />
   <script type="text/brightscript" uri="pkg:/components/common/Utils.brs" />
   <children>

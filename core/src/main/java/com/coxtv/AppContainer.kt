@@ -1,8 +1,12 @@
 package com.coxtv
 
 import android.content.Context
+import android.os.Build
+import android.provider.Settings
 import android.util.Log
+import com.coxtv.data.DeviceLink
 import com.coxtv.data.SettingsStore
+import com.coxtv.data.SetupCodes
 import com.coxtv.data.TvRepository
 import com.coxtv.data.db.AppDatabase
 import com.coxtv.data.remote.Http
@@ -19,19 +23,29 @@ interface CoxTvApplication {
     val container: AppContainer
 }
 
-/** Which app this is, for the update checker: the APK asset to fetch from GitHub Releases. */
+/** Which app this is: the APK asset the update checker fetches from GitHub Releases, and the
+ * kind of device the stream server lists it as ("firetv" or "phone"). */
 data class AppInfo(
     val versionName: String,
     val githubRepo: String,
     val apkAssetName: String,
+    val deviceKind: String,
 )
 
-class AppContainer(private val context: Context, appInfo: AppInfo) {
+class AppContainer(private val context: Context, private val appInfo: AppInfo) {
     val settings = SettingsStore(context)
     val database = AppDatabase.create(context)
     val repository = TvRepository(context, database, settings, Http.client)
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val updates = UpdateManager(context, Http.client, appInfo, appScope)
+    val link = DeviceLink(settings, Http.client)
+
+    /** This app as the stream server should list it (named after the device, e.g. "Living Room"). */
+    fun device(): SetupCodes.Device {
+        val name = runCatching { Settings.Global.getString(context.contentResolver, "device_name") }.getOrNull()
+            ?.takeIf { it.isNotBlank() } ?: Build.MODEL.orEmpty()
+        return SetupCodes.Device(appInfo.deviceKind, name)
+    }
 
     private var startupDone = false
 

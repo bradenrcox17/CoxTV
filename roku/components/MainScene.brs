@@ -18,6 +18,7 @@ sub init()
     svc = CreateObject("roSGNode", "DataService")
     m.global.addFields({ svc: svc })
     svc.control = "RUN"
+    ensureRemote()
 
     if regRead("m3uUrl") = "" then
         pushScreen("SetupScreen", { firstRun: true })
@@ -100,6 +101,7 @@ sub onNavigate(event as object)
             closeScreen(m.stack.Pop())
         end while
         if nav.load <> invalid and nav.load then startLoad(false)
+        ensureRemote() ' a setup code may have just linked this Roku
         pushScreen(nav.screen, params)
     end if
 end sub
@@ -111,3 +113,53 @@ function onKeyEvent(key as string, press as boolean) as boolean
     end if
     return false
 end function
+
+' ---------------------------------------------------------------- remote control
+
+' Listens for commands from the phone app / tv.thecoxhome.com once this Roku is linked.
+sub ensureRemote()
+    if regRead("deviceToken") = "" then return
+    if m.global.hasField("remote") and m.global.remote <> invalid then return
+    task = CreateObject("roSGNode", "RemoteTask")
+    task.observeField("command", "onRemoteCommand")
+    task.observeField("unlinked", "onRemoteUnlinked")
+    if m.global.hasField("remote") then
+        m.global.remote = task
+    else
+        m.global.addFields({ remote: task })
+    end if
+    task.control = "RUN"
+end sub
+
+sub onRemoteUnlinked()
+    print "CoxTV: unlinked from the stream server"
+end sub
+
+sub onRemoteCommand(event as object)
+    c = event.getData()
+    if c = invalid or c.cmd = invalid or m.stack.Count() = 0 then return
+    top = m.stack.Peek()
+    if top.subtype() = "SetupScreen" and m.stack.Count() = 1 then return ' not set up yet
+    onPlayer = top.subtype() = "PlayerScreen"
+    print "CoxTV: remote "; c.cmd; " "; c.name
+    if c.cmd = "play" then
+        m.remoteReply = svcCall({ type: "serverKey", id: c.id }, "onServerKey")
+    else if c.cmd = "stop" then
+        if onPlayer then popScreen()
+    else if onPlayer then
+        top.remote = c.cmd ' up / down / prev
+    else if c.cmd = "prev" and regRead("lastKey") <> "" then
+        pushScreen("PlayerScreen", { category: regRead("lastCategory", "__all__"), key: regRead("lastKey") })
+    end if
+end sub
+
+' The channel sent from the remote, found in this Roku's playlist: play it (replacing the
+' player if one is open).
+sub onServerKey(event as object)
+    if m.remoteReply = invalid or not event.getRoSGNode().isSameNode(m.remoteReply) then return
+    m.remoteReply = invalid
+    key = event.getData().key
+    if key = invalid or key = "" then return
+    if m.stack.Count() > 0 and m.stack.Peek().subtype() = "PlayerScreen" then closeScreen(m.stack.Pop())
+    pushScreen("PlayerScreen", { category: "__all__", key: key })
+end sub

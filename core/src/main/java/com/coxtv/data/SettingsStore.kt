@@ -29,6 +29,7 @@ private val Context.dataStore by preferencesDataStore(name = "settings")
 
 private val DEFAULT_CATEGORIES = listOf(Categories.FAVORITES, Categories.RECENT, Categories.SPORTS, Categories.ALL)
 private const val RECENT_MAX = 20
+private const val SEARCHES_MAX = 8
 
 private fun readList(raw: String): List<String> = JSONArray(raw).let { a -> List(a.length()) { a.getString(it) } }
 
@@ -56,6 +57,10 @@ class SettingsStore(private val context: Context) {
         val categoriesV2 = booleanPreferencesKey("categories_v2") // Recent / Sports added
         val recent = stringPreferencesKey("recent")
         val hidden = stringPreferencesKey("hidden")
+        val deviceToken = stringPreferencesKey("device_token")
+        val deviceName = stringPreferencesKey("device_name")
+        val useServer = booleanPreferencesKey("use_server")
+        val searches = stringPreferencesKey("searches")
     }
 
     private val data get() = context.dataStore.data
@@ -107,6 +112,53 @@ class SettingsStore(private val context: Context) {
             val set = prefs[Keys.hidden]?.let { runCatching { readList(it) }.getOrNull() }.orEmpty().toMutableSet()
             if (hide) set += ids else set -= ids.toSet()
             prefs[Keys.hidden] = JSONArray(set.toList()).toString()
+        }
+    }
+
+    // Link with the CoxOnAir stream server (from a setup code; see DeviceLink).
+    val deviceName: Flow<String> = data.map { it[Keys.deviceName].orEmpty() }
+    val isLinked: Flow<Boolean> = data.map { !it[Keys.deviceToken].isNullOrBlank() }
+
+    /** Play channels through the stream server when linked (on unless turned off). */
+    val useServer: Flow<Boolean> = data.map { it[Keys.useServer] ?: true }
+
+    suspend fun deviceToken(): String = data.first()[Keys.deviceToken].orEmpty()
+
+    suspend fun setDeviceLink(token: String, name: String) {
+        context.dataStore.edit {
+            it[Keys.deviceToken] = token
+            it[Keys.deviceName] = name
+        }
+    }
+
+    suspend fun setDeviceName(name: String) {
+        if (data.first()[Keys.deviceName] != name) context.dataStore.edit { it[Keys.deviceName] = name }
+    }
+
+    suspend fun setUseServer(on: Boolean) {
+        context.dataStore.edit { it[Keys.useServer] = on }
+    }
+
+    /** Searches that led to a channel, newest first. */
+    val searches: Flow<List<String>> = data.map { prefs -> prefs[Keys.searches]?.let { runCatching { readList(it) }.getOrNull() }.orEmpty() }
+
+    suspend fun addSearch(query: String) {
+        val q = query.trim()
+        if (q.length < 2) return
+        context.dataStore.edit { prefs ->
+            val list = prefs[Keys.searches]?.let { runCatching { readList(it) }.getOrNull() }.orEmpty()
+            prefs[Keys.searches] = JSONArray((listOf(q) + list.filterNot { it.equals(q, ignoreCase = true) }).take(SEARCHES_MAX)).toString()
+        }
+    }
+
+    suspend fun clearSearches() {
+        context.dataStore.edit { it.remove(Keys.searches) }
+    }
+
+    suspend fun removeSearch(query: String) {
+        context.dataStore.edit { prefs ->
+            val list = prefs[Keys.searches]?.let { runCatching { readList(it) }.getOrNull() }.orEmpty()
+            prefs[Keys.searches] = JSONArray(list - query).toString()
         }
     }
 

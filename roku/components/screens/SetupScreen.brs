@@ -41,6 +41,10 @@ sub refreshMenu()
         labels.Push("Categories:  choose which show in the sidebar, and their order")
         labels.Push("Reorder favorites")
         labels.Push("Hidden channels")
+        if regRead("deviceToken") <> "" then
+            if useStreamServer() then state = "On" else state = "Off"
+            labels.Push("Play through stream server:  " + state + "   (linked as " + valueOr(regRead("deviceName"), "this Roku") + ")")
+        end if
     end if
     root = CreateObject("roSGNode", "ContentNode")
     for each label in labels
@@ -76,6 +80,15 @@ sub onSelected()
         m.top.navigate = { action: "push", screen: "OrganizeScreen", params: { mode: "favorites" } }
     else if i = 7 then
         m.top.navigate = { action: "push", screen: "OrganizeScreen", params: { mode: "hidden" } }
+    else if i = 8 then
+        if useStreamServer() then regWrite("useServer", "0") else regWrite("useServer", "1")
+        m.status.color = "0x9AA3B2FF"
+        if useStreamServer() then
+            m.status.text = "Channels play through your stream server (TVs on the same channel share one connection)."
+        else
+            m.status.text = "Channels play straight from the provider."
+        end if
+        refreshMenu()
     end if
 end sub
 
@@ -251,6 +264,10 @@ sub onCodeReply(event as object)
         m.status.color = "0xFF6B6BFF"
         m.status.text = r.error
         return
+    end if
+    if r.device <> invalid and r.device <> "" then
+        regWrite("deviceToken", r.device)
+        regWrite("deviceName", r.deviceName)
     end if
     m.m3u = r.m3u
     ' The stream server's ready-made guide loads in seconds on a Roku; the provider's raw

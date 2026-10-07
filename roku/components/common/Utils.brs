@@ -290,3 +290,65 @@ function isXtreamLive(pathPart as string) as boolean
     end for
     return true
 end function
+
+' ---------------------------------------------------------------- stream server link
+
+function streamServer() as string
+    return "https://stream.thecoxhome.com:9443"
+end function
+
+' The stream server's id for a channel: the provider stream number at the end of its link
+' (".../live/user/pass/12345.ts" -> "12345"), or "" when the link has none.
+function serverIdOf(url as string) as string
+    path = url
+    q = Instr(1, path, "?")
+    if q > 0 then path = Left(path, q - 1)
+    slash = 0
+    for k = Len(path) to 1 step -1
+        if Mid(path, k, 1) = "/" then
+            slash = k
+            exit for
+        end if
+    end for
+    last = Mid(path, slash + 1)
+    dot = Instr(1, last, ".")
+    if dot > 0 then last = Left(last, dot - 1)
+    if last = "" or Len(last) > 20 then return ""
+    for k = 1 to Len(last)
+        c = Mid(last, k, 1)
+        if c < "0" or c > "9" then return ""
+    end for
+    return last
+end function
+
+' Playing through the stream server (set up with a code, and not turned off in Settings)?
+function useStreamServer() as boolean
+    return regRead("deviceToken") <> "" and regRead("useServer", "1") = "1"
+end function
+
+' HLS link for a channel through the stream server, or "" to play the provider link directly.
+function serverStreamUrl(url as string) as string
+    if not useStreamServer() then return ""
+    id = serverIdOf(url)
+    if id = "" then return ""
+    return streamServer() + "/d/" + regRead("deviceToken") + "/live/" + id + ".m3u8"
+end function
+
+' ---------------------------------------------------------------- search history
+
+' Searches that led to a channel, newest first (at most 8).
+function recentSearches() as object
+    list = ParseJson(regRead("searches", "[]"))
+    if type(list) <> "roArray" then return []
+    return list
+end function
+
+sub addSearchQuery(q as string)
+    q = q.Trim()
+    if Len(q) < 2 then return
+    out = [q]
+    for each s in recentSearches()
+        if LCase(s) <> LCase(q) and out.Count() < 8 then out.Push(s)
+    end for
+    regWrite("searches", FormatJson(out))
+end sub

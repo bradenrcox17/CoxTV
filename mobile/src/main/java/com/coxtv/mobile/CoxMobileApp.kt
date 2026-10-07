@@ -18,6 +18,7 @@ class CoxMobileApp : Application(), CoxTvApplication {
                 versionName = BuildConfig.VERSION_NAME,
                 githubRepo = BuildConfig.GITHUB_REPO,
                 apkAssetName = BuildConfig.APK_ASSET,
+                deviceKind = "phone",
             ),
         )
         EpgRefreshWorker.schedulePeriodic(this)

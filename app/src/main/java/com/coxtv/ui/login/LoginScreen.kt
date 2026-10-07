@@ -36,7 +36,9 @@ import com.coxtv.data.SourceConfig
 import com.coxtv.ui.components.CoxButton
 import com.coxtv.ui.components.CoxWordmark
 import com.coxtv.ui.components.TvTextField
+import com.coxtv.ui.components.collectAsStateCompat
 import com.coxtv.ui.theme.CoxColors
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private const val EXAMPLE_M3U = "http://provider.example/playlist.m3u"
@@ -57,6 +59,9 @@ fun LoginScreen(container: AppContainer, onConnected: () -> Unit) {
     var isError by remember { mutableStateOf(false) }
     val firstField = remember { FocusRequester() }
     val connectButton = remember { FocusRequester() }
+    val linked by container.settings.isLinked.collectAsStateCompat(false)
+    val deviceName by container.settings.deviceName.collectAsStateCompat("")
+    val useServer by container.settings.useServer.collectAsStateCompat(true)
 
     LaunchedEffect(Unit) {
         if (!loaded) {
@@ -80,8 +85,9 @@ fun LoginScreen(container: AppContainer, onConnected: () -> Unit) {
         scope.launch {
             try {
                 message = "Loading channels…"
-                val count = container.repository.connectWithSetupCode(code)
-                message = "Loaded $count channels"
+                val count = container.repository.connectWithSetupCode(code, container.device())
+                message = if (count == null) "Linked. Your Xtream login was kept." else "Loaded $count channels"
+                if (count == null) delay(1_500)
                 onConnected()
             } catch (e: Exception) {
                 isError = true
@@ -137,6 +143,23 @@ fun LoginScreen(container: AppContainer, onConnected: () -> Unit) {
                 TvTextField(code, { code = it }, "Setup code", Modifier.width(320.dp).focusRequester(firstField), placeholder = "K7P-2QX")
                 Spacer(Modifier.width(20.dp))
                 CoxButton(if (busy) "Connecting…" else "Use code", onClick = { if (!busy) useCode() }, primary = true)
+            }
+            if (linked) {
+                Spacer(Modifier.height(12.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "Linked as \"$deviceName\" (Remote on tv.thecoxhome.com and the phone app). " +
+                            if (useServer) "Channels play through your stream server." else "Channels play straight from the provider.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = CoxColors.TextDim,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Spacer(Modifier.width(20.dp))
+                    CoxButton(
+                        if (useServer) "Play from provider instead" else "Play through stream server",
+                        onClick = { scope.launch { container.settings.setUseServer(!useServer) } },
+                    )
+                }
             }
         }
         Spacer(Modifier.height(20.dp))

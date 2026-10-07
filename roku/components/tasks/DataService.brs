@@ -89,6 +89,8 @@ sub handleRequest(req as dynamic)
         result = { items: hiddenList() }
     else if t = "setupCode" then
         result = redeemSetupCode(req.code)
+    else if t = "serverKey" then
+        result = { key: serverKey(req.id) }
     end if
     if result <> invalid and req.reply <> invalid then req.reply.result = result
 end sub
@@ -684,7 +686,25 @@ sub resetListCaches()
     m.allShownCache = invalid
     m.groupCache = {}
     m.sportsCache = invalid
+    m.serverIdx = invalid
 end sub
+
+' Key of the shown channel for a stream server channel id (a channel sent from the remote).
+function serverKey(id as dynamic) as string
+    if id = invalid or id = "" then return ""
+    pl = m.pl
+    if m.serverIdx = invalid then
+        idx = {}
+        for i = 0 to pl.urls.Count() - 1
+            sid = serverIdOf(pl.urls[i])
+            if sid <> "" and not idx.DoesExist(sid) then idx[sid] = i
+        end for
+        m.serverIdx = idx
+    end if
+    i = m.serverIdx[id]
+    if i = invalid then return ""
+    return pl.keys[pl.shown[i]]
+end function
 
 ' Shown-channel indexes the user hid ("hidden" registry keys; hiding any copy hides all).
 function hiddenSet() as object
@@ -1075,7 +1095,11 @@ function redeemSetupCode(code as dynamic) as object
     ut = CreateObject("roUrlTransfer")
     port = CreateObject("roMessagePort")
     ut.SetMessagePort(port)
-    ut.SetUrl("https://stream.thecoxhome.com:9443/setup/" + code)
+    ' kind / name also link this Roku with the stream server (remote control, playing
+    ' through the server); it shows in the remote under its Roku device name.
+    name = CreateObject("roDeviceInfo").GetFriendlyName()
+    if name = invalid or name = "" then name = "Roku"
+    ut.SetUrl(streamServer() + "/setup/" + code + "?kind=roku&name=" + ut.Escape(name))
     ut.SetCertificatesFile("common:/certs/ca-bundle.crt")
     ut.InitClientCertificates()
     ut.RetainBodyOnError(true)
@@ -1094,5 +1118,9 @@ function redeemSetupCode(code as dynamic) as object
     guide = data.app_guide
     if guide = invalid or guide = "" then guide = data.epg
     if guide = invalid then guide = ""
-    return { m3u: data.m3u, guide: guide, error: "" }
+    device = ""
+    if data.device <> invalid then device = data.device
+    deviceName = ""
+    if data.device_name <> invalid then deviceName = data.device_name
+    return { m3u: data.m3u, guide: guide, device: device, deviceName: deviceName, error: "" }
 end function

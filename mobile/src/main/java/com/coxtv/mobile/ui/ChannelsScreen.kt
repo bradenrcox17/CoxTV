@@ -37,6 +37,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -45,6 +46,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.coxtv.AppContainer
 import com.coxtv.data.Categories
 import com.coxtv.data.CategoryExtras
+import com.coxtv.data.DeviceLink
 import com.coxtv.data.db.Channel
 import com.coxtv.data.db.ProgramEntity
 import com.coxtv.mobile.ui.theme.CoxColors
@@ -58,6 +60,8 @@ fun ChannelsScreen(
     onPlay: (channelId: String) -> Unit,
 ) {
     val repo = container.repository
+    val context = LocalContext.current
+    val tvs = rememberOnlineTvs(container)
     val scope = rememberCoroutineScope()
     val now by rememberNow()
     val channels by repo.channels.collectAsStateWithLifecycle(null)
@@ -138,6 +142,8 @@ fun ChannelsScreen(
                         onClick = { onPlay(ch.id) },
                         onToggleFavorite = { scope.launch { repo.toggleFavorite(ch) } },
                         onHide = { scope.launch { repo.setHidden(ch, true) } },
+                        tvs = tvs,
+                        onCast = { tv -> castChannel(container, context, tv, ch) },
                     )
                 }
             }
@@ -155,6 +161,8 @@ private fun ChannelRow(
     onClick: () -> Unit,
     onToggleFavorite: () -> Unit,
     onHide: () -> Unit,
+    tvs: List<DeviceLink.Tv>,
+    onCast: (DeviceLink.Tv) -> Unit,
 ) {
     var menu by remember { mutableStateOf(false) }
     Box {
@@ -208,6 +216,12 @@ private fun ChannelRow(
                 text = { Text("Hide this channel") },
                 onClick = { menu = false; onHide() },
             )
+            tvs.forEach { tv ->
+                DropdownMenuItem(
+                    text = { Text("Play on ${tv.name}") },
+                    onClick = { menu = false; onCast(tv) },
+                )
+            }
         }
     }
 }

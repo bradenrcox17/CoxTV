@@ -71,6 +71,7 @@ import androidx.tv.material3.Text
 import com.coxtv.AppContainer
 import com.coxtv.data.Categories
 import com.coxtv.data.CategoryExtras
+import com.coxtv.data.DeviceLink
 import com.coxtv.data.db.Channel
 import com.coxtv.data.db.ProgramEntity
 import com.coxtv.player.buildLivePlayer
@@ -130,8 +131,9 @@ fun PlayerScreen(
     var digits by remember { mutableStateOf("") }
     var firstTune by remember { mutableStateOf(true) }
     var previousId by remember { mutableStateOf<String?>(null) }
-    // Copies of this channel (HD/FHD/backup feeds): if one won't start, the next is tried.
-    var sources by remember { mutableStateOf<List<Channel>>(emptyList()) }
+    // Ways to play this channel, tried in turn until one starts: through the stream server
+    // (when linked), then each copy of the channel (HD/FHD/backup feeds) directly.
+    var sources by remember { mutableStateOf<List<Pair<Channel, String>>>(emptyList()) }
     var sourceIndex by remember { mutableIntStateOf(0) }
     var sourcePlayed by remember { mutableStateOf(false) }
     val rootFocus = remember { FocusRequester() }
@@ -181,6 +183,7 @@ fun PlayerScreen(
         onDispose {
             player.removeListener(listener)
             player.release()
+            container.appScope.launch { container.link.leave() } // frees the channel on the server sooner
         }
     }
 
@@ -206,14 +209,24 @@ fun PlayerScreen(
         tune(zapList[next])
     }
 
-    // The id may be a folded copy (e.g. last watched before copies were combined).
+    // The id may be a folded copy (e.g. last watched before copies were combined). A new id
+    // means a channel was sent from the remote.
+    var requestedId by remember { mutableStateOf(channelId) }
     LaunchedEffect(channelId) {
         val shown = repo.shownId(channelId)
-        if (shown != currentId && currentId == channelId) currentId = shown
+        if (channelId != requestedId) {
+            requestedId = channelId
+            allChannels?.firstOrNull { it.id == shown }?.let(::tune) ?: run { currentId = shown }
+        } else if (shown != currentId && currentId == channelId) {
+            currentId = shown
+        }
     }
 
     LaunchedEffect(current?.id) {
-        sources = current?.let { repo.sourcesFor(it) }.orEmpty()
+        val ch = current
+        sources = if (ch == null) emptyList() else {
+            listOfNotNull(container.link.streamUrl(ch)?.let { ch to it }) + repo.sourcesFor(ch).map { it to it.streamUrl }
+        }
         sourceIndex = 0
     }
 
@@ -226,19 +239,21 @@ fun PlayerScreen(
     }
 
     // Tune (debounced so holding up/down skims channels without starting every stream).
-    LaunchedEffect(current?.streamUrl, retryNonce, sourceIndex) {
+    LaunchedEffect(current?.streamUrl, retryNonce, sourceIndex, sources) {
         val channel = current ?: return@LaunchedEffect
-        val ch = sources.getOrNull(sourceIndex)?.takeIf { sources.first().id == channel.id } ?: channel
+        if (sources.firstOrNull()?.first?.id != channel.id) return@LaunchedEffect // still looking them up
+        val (ch, url) = sources.getOrNull(sourceIndex) ?: sources.first()
         val isRetry = retryNonce != handledRetry
         handledRetry = retryNonce
         if (!firstTune && !isRetry) delay(400)
         retrying = false
         firstTune = false
         buffering = true
-        android.util.Log.d("CoxTV", "tune ${ch.number} ${ch.name} -> ${ch.streamUrl} retry=$isRetry")
+        android.util.Log.d("CoxTV", "tune ${ch.number} ${ch.name} source ${sourceIndex + 1}/${sources.size} retry=$isRetry")
         sourcePlayed = false
         awaitingFirstFrame = true
-        player.playChannel(ch)
+        container.link.playing = channel.name to (DeviceLink.serverId(ch.streamUrl) ?: "")
+        player.playChannel(ch, url)
         container.settings.setLastWatched(channel.id, category)
     }
 
@@ -278,6 +293,18 @@ fun PlayerScreen(
     // Gesture handlers outlive recompositions, so route them through the latest lambdas.
     val zapRef by rememberUpdatedState<(Int) -> Unit> { zap(it) }
     val flashRef by rememberUpdatedState<() -> Unit> { flashInfo() }
+    val prevRef by rememberUpdatedState<() -> Unit> { previousId?.let { id -> allChannels?.firstOrNull { it.id == id } }?.let(::tune) }
+
+    // Channel up/down and previous from the phone app or tv.thecoxhome.com (Remote).
+    LaunchedEffect(Unit) {
+        container.link.commands.collect { c ->
+            when (c.cmd) {
+                "up" -> zapRef(+1)
+                "down" -> zapRef(-1)
+                "prev" -> prevRef()
+            }
+        }
+    }
     val isTouch = LocalIsTouch.current
 
     val nowNext by produceState(emptyList<ProgramEntity>(), current?.epgId, now / 60_000) {

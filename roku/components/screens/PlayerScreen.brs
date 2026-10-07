@@ -44,6 +44,7 @@ sub init()
     m.top.observeField("params", "onParams")
     m.top.observeField("active", "onActive")
     m.top.observeField("closed", "onClosed")
+    m.top.observeField("remote", "onRemote")
     ' When the guide finishes loading (or refreshes), re-fetch now/next for the overlay.
     m.global.bus.observeFieldScoped("epgVersion", "onEpgChanged")
 
@@ -94,6 +95,10 @@ sub onEpgChanged()
 end sub
 
 sub onClosed()
+    if m.global.hasField("remote") and m.global.remote <> invalid then
+        m.global.remote.playing = {}
+        m.global.remote.leave = true ' frees the channel on the stream server sooner
+    end if
     m.global.bus.unobserveFieldScoped("epgVersion")
     m.global.bus.playerOpen = false
     m.global.bus.playingSince = 0
@@ -170,9 +175,15 @@ sub startPlayback()
     if ch = invalid then return
     if ch.id = m.playingKey and m.video.state = "playing" then return
     m.playingKey = ch.id
-    m.candidates = streamCandidates(ch.url)
+    ' Through the stream server first when linked (TVs on the same channel share one provider
+    ' connection), then the provider link directly if the server can't play it.
+    m.candidates = []
+    viaServer = serverStreamUrl(ch.url)
+    if viaServer <> "" then m.candidates.Push({ url: viaServer, format: "hls" })
+    m.candidates.Append(streamCandidates(ch.url))
     m.cand = 0
     m.hasPlayed = false
+    if m.global.hasField("remote") and m.global.remote <> invalid then m.global.remote.playing = { name: ch.title, id: serverIdOf(ch.url) }
     m.reconnects = 0
     m.altUrls = invalid  ' other copies of this channel, fetched only if it won't start
     m.altIndex = 0
@@ -527,4 +538,18 @@ end sub
 ' Counts as recently watched once it has played for a few seconds.
 sub onRecentTimer()
     if m.channel <> invalid and m.video.state = "playing" then addRecent(m.channel.id)
+end sub
+
+' Channel up/down and previous from the phone app or tv.thecoxhome.com (Remote).
+sub onRemote()
+    cmd = m.top.remote
+    if m.content = invalid then return
+    if m.mini.visible then closeMini()
+    if cmd = "up" then
+        tune(m.index + 1, false)
+    else if cmd = "down" then
+        tune(m.index - 1, false)
+    else if cmd = "prev" and m.prevIndex >= 0 then
+        tune(m.prevIndex, true)
+    end if
 end sub
