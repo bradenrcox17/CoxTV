@@ -23,7 +23,16 @@ end sub
 sub onParams()
     p = m.top.params
     if p.mode <> invalid then m.mode = p.mode
-    if m.mode = "hidden" then
+    if m.mode = "teams" then
+        m.title.text = "Favorite teams"
+        m.hint.text = ""
+        m.empty.text = "Loading..."
+        m.teamQuery = ""
+        m.teamsChanged = false
+        m.favReply = svcCall({ type: "teamCatalog" }, "onTeamCatalog")
+        m.global.bus.observeFieldScoped("prefsVersion", "onTeamsSyncedIn") ' teams changed on another device
+        m.top.observeField("closed", "onClosed")
+    else if m.mode = "hidden" then
         m.title.text = "Hidden channels"
         m.hint.text = "OK: show a hidden channel again (OK again hides it). Hide channels with * in a channel list." + chr(10) + "Hidden channels don't appear in lists, the guide, search or Sports on now."
         m.empty.text = "Loading..."
@@ -256,7 +265,9 @@ end sub
 sub onSelected()
     i = m.list.itemSelected
     m.status.text = ""
-    if m.mode = "hidden" then
+    if m.mode = "teams" then
+        onTeamSelected(i)
+    else if m.mode = "hidden" then
         toggleHiddenRow(i)
     else if m.moving >= 0 then
         dropMove()
@@ -269,6 +280,14 @@ end sub
 
 function onKeyEvent(key as string, press as boolean) as boolean
     if not press then return false
+    if m.mode = "teams" then
+        if key = "back" then return teamsBack()
+        if key = "options" then
+            if m.teamSport <> invalid then openTeamSearch()
+            return true
+        end if
+        return false
+    end if
     if key = "back" and m.moving >= 0 then
         dropMove()
         return true
@@ -320,4 +339,246 @@ sub toggleHiddenRow(i as integer)
         setHidden(node.id, true)
         node.shortDescriptionLine1 = "Hidden"
     end if
+end sub
+
+' ---------------------------------------------------------------- favorite teams
+' Settings > Favorite teams: a list of sports, then a sport's teams (yours first, then A-Z).
+' OK stars or un-stars a team; the row stays put. "Find a team" (or *) searches by name.
+
+sub onTeamCatalog(event as object)
+    if m.favReply = invalid or not event.getRoSGNode().isSameNode(m.favReply) then return
+    m.favReply = invalid
+    sports = event.getData().sports
+    m.teamCatalogOk = (type(sports) = "roArray" and sports.Count() > 0)
+    if not m.teamCatalogOk then
+        sports = []
+        for each s in [["nfl", "NFL"], ["ncaaf", "College (all NCAA sports)"], ["nba", "NBA"], ["wnba", "WNBA"], ["mlb", "MLB"], ["nhl", "NHL"], ["soccer", "Soccer"]]
+            sports.Push({ id: s[0], label: s[1], teams: [] })
+        end for
+    end if
+    m.teamSports = sports
+    showTeamSports(0)
+end sub
+
+sub showTeamSports(focusIndex as integer)
+    m.teamSport = invalid
+    m.title.text = "Favorite teams"
+    m.hint.text = "OK: choose a sport, then star your teams. Their games are marked and listed first in Sports on now," + chr(10) + "and sync with your other TVs, phone and tv.thecoxhome.com. College teams count in every NCAA sport."
+    mine = favoriteTeams()
+    root = CreateObject("roSGNode", "ContentNode")
+    for each s in m.teamSports
+        lst = mine[s.id]
+        names = []
+        if type(lst) = "roArray" then
+            for each t in lst
+                names.Push(t.display)
+            end for
+        end if
+        title = s.label
+        if names.Count() > 0 then title = title + "   -   " + names.Join(", ")
+        right = "No teams yet"
+        if names.Count() = 1 then right = "1 team"
+        if names.Count() > 1 then right = names.Count().ToStr() + " teams"
+        addRow(root, s.id, title, right, false, false)
+    end for
+    showContent(root, focusIndex)
+end sub
+
+function teamSportById(id as string) as dynamic
+    for each s in m.teamSports
+        if s.id = id then return s
+    end for
+    return invalid
+end function
+
+sub showTeams(id as string)
+    s = teamSportById(id)
+    if s = invalid then return
+    m.teamSport = id
+    m.title.text = s.label
+    if id = "ncaaf" then
+        m.hint.text = "OK: star or un-star a school (ticked = your team).  *: find a school by name." + chr(10) + "A school counts in every NCAA sport: football, basketball, baseball and more."
+    else
+        m.hint.text = "OK: star or un-star a team (ticked = your team).  *: find a team by name."
+    end if
+    q = m.teamQuery
+    words = []
+    for each w in q.Split(" ")
+        if w <> "" then words.Push(LCase(w))
+    end for
+    mine = favoriteTeams()[id]
+    if type(mine) <> "roArray" then mine = []
+    starred = {}
+    rows = []
+    for each t in mine
+        starred[t.key] = true
+        rows.Push(t)
+    end for
+    for each t in s.teams
+        if not starred.DoesExist(t.key) then rows.Push(t)
+    end for
+    first = []
+    rest = []
+    for each t in rows
+        name = LCase(t.display)
+        ok = true
+        for each w in words
+            if Instr(1, name, w) = 0 then ok = false
+        end for
+        if ok then
+            ' Names that start with the search first ("tenn": Tennessee before East Tennessee State).
+            if words.Count() > 0 and Left(name, Len(words[0])) = words[0] and not starred.DoesExist(t.key) then first.Push(t) else rest.Push(t)
+        end if
+    end for
+    found = []
+    for each t in rest
+        if starred.DoesExist(t.key) then found.Push(t)
+    end for
+    found.Append(first)
+    for each t in rest
+        if not starred.DoesExist(t.key) then found.Push(t)
+    end for
+    root = CreateObject("roSGNode", "ContentNode")
+    if q = "" then
+        if id = "ncaaf" then addRow(root, "__search__", "Find a school...", "* or OK", false, false) else addRow(root, "__search__", "Find a team...", "* or OK", false, false)
+    else
+        addRow(root, "__search__", "Find: " + q, "OK to change", false, false)
+    end if
+    for each t in found
+        addTeamRow(root, t, starred.DoesExist(t.key), "")
+    end for
+    if found.Count() = 0 and teamKey(q) <> "" then
+        ' Not in the list (or no list without a setup code): offer the typed name itself.
+        addTeamRow(root, { key: teamKey(q), display: q }, false, "Add " + Chr(34) + q + Chr(34))
+    end if
+    if root.getChildCount() = 1 and q = "" and not m.teamCatalogOk then
+        if regRead("deviceToken") = "" then
+            addRow(root, "__none__", "The team list comes from tv.thecoxhome.com: set this Roku up with a code first.", "", false, false)
+        else
+            addRow(root, "__none__", "The team list isn't available right now. Use Find a team to add one by name.", "", false, false)
+        end if
+    end if
+    showContent(root, 0)
+    m.list.jumpToItem = 0
+end sub
+
+sub addTeamRow(root as object, t as object, on as boolean, label as string)
+    title = t.display
+    if label <> "" then title = label
+    right = ""
+    if on then right = "Your team"
+    addRow(root, t.key, title, right, on, true)
+    root.getChild(root.getChildCount() - 1).description = t.display
+end sub
+
+sub onTeamSelected(i as integer)
+    node = m.list.content.getChild(i)
+    if node = invalid then return
+    if m.teamSport = invalid then
+        m.teamQuery = ""
+        m.teamSportIndex = i
+        showTeams(node.id)
+        return
+    end if
+    if node.id = "__search__" then
+        openTeamSearch()
+        return
+    end if
+    if node.id = "__none__" then return
+    on = not node.checked
+    setTeamIn(m.teamSport, { key: node.id, display: node.description }, on)
+    m.teamsChanged = true
+    node.checked = on
+    if on then
+        node.shortDescriptionLine1 = "Your team"
+        node.title = node.description
+    else
+        node.shortDescriptionLine1 = ""
+    end if
+end sub
+
+sub openTeamSearch()
+    dlg = CreateObject("roSGNode", "StandardKeyboardDialog")
+    if dlg = invalid then dlg = CreateObject("roSGNode", "KeyboardDialog") ' Roku OS < 10
+    if m.teamSport = "ncaaf" then dlg.title = "Find a school" else dlg.title = "Find a team"
+    dlg.text = m.teamQuery
+    dlg.buttons = ["Search", "Show all", "Cancel"]
+    dlg.observeFieldScoped("buttonSelected", "onTeamSearchButton")
+    dlg.observeFieldScoped("wasClosed", "onTeamSearchClosed")
+    m.dialog = dlg
+    m.top.getScene().dialog = dlg
+end sub
+
+sub onTeamSearchButton()
+    dlg = m.dialog
+    if dlg = invalid then return
+    b = dlg.buttonSelected
+    if b = 0 then m.teamQuery = dlg.text.Trim()
+    if b = 1 then m.teamQuery = ""
+    dlg.unobserveFieldScoped("buttonSelected")
+    dlg.unobserveFieldScoped("wasClosed")
+    m.dialog = invalid
+    dlg.close = true
+    m.top.getScene().dialog = invalid
+    if b <= 1 then showTeams(m.teamSport)
+    m.list.setFocus(true)
+end sub
+
+sub onTeamSearchClosed()
+    if m.dialog = invalid then return
+    m.dialog.unobserveFieldScoped("buttonSelected")
+    m.dialog.unobserveFieldScoped("wasClosed")
+    m.dialog = invalid
+    m.top.getScene().dialog = invalid
+    m.list.setFocus(true)
+end sub
+
+' Back from a sport's teams: the list of sports (with the new teams), and sync right away.
+function teamsBack() as boolean
+    if m.teamSport = invalid then
+        if m.teamsChanged = true then svcCall({ type: "syncNow" }, "onTeamsSynced")
+        return false
+    end if
+    if m.teamsChanged = true then
+        svcCall({ type: "syncNow" }, "onTeamsSynced")
+        m.teamsChanged = false
+    end if
+    i = m.teamSportIndex
+    if i = invalid then i = 0
+    showTeamSports(i)
+    return true
+end function
+
+sub onTeamsSynced()
+end sub
+
+' Teams synced in from another device: refresh the sports (or tick marks; rows stay put).
+sub onTeamsSyncedIn()
+    if m.teamSports = invalid or m.list.content = invalid then return
+    if m.teamSport = invalid then
+        showTeamSports(m.list.itemFocused)
+        return
+    end if
+    mine = favoriteTeams()[m.teamSport]
+    keys = {}
+    if type(mine) = "roArray" then
+        for each t in mine
+            keys[t.key] = true
+        end for
+    end if
+    content = m.list.content
+    for i = 0 to content.getChildCount() - 1
+        node = content.getChild(i)
+        if node.showCheck then
+            on = keys.DoesExist(node.id)
+            if node.checked <> on then
+                node.checked = on
+                if on then node.shortDescriptionLine1 = "Your team" else node.shortDescriptionLine1 = ""
+            end if
+        end if
+    end for
+end sub
+
+sub onClosed()
+    if m.mode = "teams" then m.global.bus.unobserveFieldScoped("prefsVersion")
 end sub

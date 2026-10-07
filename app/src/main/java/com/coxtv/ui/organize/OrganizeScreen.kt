@@ -48,15 +48,16 @@ import com.coxtv.ui.theme.CoxColors
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
-/** Choose which categories appear in the sidebar, their order, and the order of favorites. */
+/** Choose which categories appear in the sidebar, their order, the order of favorites, hidden
+ * channels and favorite teams. */
 @Composable
-fun OrganizeScreen(container: AppContainer) {
+fun OrganizeScreen(container: AppContainer, initialTab: Int = 0) {
     val repo = container.repository
     val scope = rememberCoroutineScope()
     val shown by repo.categories.collectAsStateCompat(null)
     val groups by repo.groups.collectAsStateCompat(emptyList())
     val channels by repo.channels.collectAsStateCompat(null)
-    var tab by rememberSaveable { mutableIntStateOf(0) }
+    var tab by rememberSaveable { mutableIntStateOf(initialTab) }
     val firstFocus = remember { FocusRequester() }
 
     val all = channels.orEmpty()
@@ -72,11 +73,13 @@ fun OrganizeScreen(container: AppContainer) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text("Categories & favorites", style = MaterialTheme.typography.headlineSmall)
             Spacer(Modifier.weight(1f))
-            CoxButton("Categories", onClick = { tab = 0 }, primary = tab == 0, modifier = Modifier.focusRequester(firstFocus))
+            CoxButton("Categories", onClick = { tab = 0 }, primary = tab == 0, modifier = if (tab == 0) Modifier.focusRequester(firstFocus) else Modifier)
             Spacer(Modifier.width(12.dp))
             CoxButton("Favorites order", onClick = { tab = 1 }, primary = tab == 1)
             Spacer(Modifier.width(12.dp))
             CoxButton("Hidden channels", onClick = { tab = 2 }, primary = tab == 2)
+            Spacer(Modifier.width(12.dp))
+            CoxButton("Favorite teams", onClick = { tab = 3 }, primary = tab == 3, modifier = if (tab == 3) Modifier.focusRequester(firstFocus) else Modifier)
         }
         Spacer(Modifier.height(16.dp))
         when (tab) {
@@ -123,6 +126,8 @@ fun OrganizeScreen(container: AppContainer) {
             }
 
             2 -> HiddenPane(container)
+
+            3 -> TeamsPane(container)
 
             else -> Pane(
                 "Favorites order",

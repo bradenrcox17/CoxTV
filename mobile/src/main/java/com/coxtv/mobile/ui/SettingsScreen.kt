@@ -12,6 +12,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
@@ -36,7 +37,7 @@ import com.coxtv.work.EpgRefreshWorker
 import kotlinx.coroutines.launch
 
 @Composable
-fun SettingsScreen(container: AppContainer, onEditSources: () -> Unit, onOrganize: () -> Unit) {
+fun SettingsScreen(container: AppContainer, onEditSources: () -> Unit, onOrganize: () -> Unit, onFavoriteTeams: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val fmt = rememberTimeFormatter()
@@ -73,6 +74,12 @@ fun SettingsScreen(container: AppContainer, onEditSources: () -> Unit, onOrganiz
             "Categories & favorites",
             "Choose which categories show, their order, and the order of your favorites",
             onOrganize,
+        )
+        Item(
+            Icons.Filled.Star,
+            "Favorite teams",
+            "NFL, college (every NCAA sport), NBA, WNBA, MLB, NHL and soccer teams, shown first in Sports on now",
+            onFavoriteTeams,
         )
         Item(
             Icons.Filled.Refresh,

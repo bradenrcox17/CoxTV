@@ -41,7 +41,7 @@ sealed interface Screen {
     data object Home : Screen { override val key = "home" }
     data class Guide(val category: String) : Screen { override val key = "guide" }
     data object Search : Screen { override val key = "search" }
-    data object Organize : Screen { override val key = "organize" }
+    data class Organize(val tab: Int = 0) : Screen { override val key = "organize" }
     data class Player(val channelId: String, val category: String) : Screen { override val key = "player" }
 }
 
@@ -127,12 +127,13 @@ fun AppRoot(container: AppContainer) {
                     onPlay = { id, category -> push(Screen.Player(id, category)) },
                     onOpenGuide = { category -> push(Screen.Guide(category)) },
                     onOpenSearch = { push(Screen.Search) },
-                    onOrganize = { push(Screen.Organize) },
+                    onOrganize = { push(Screen.Organize()) },
+                    onFavoriteTeams = { push(Screen.Organize(tab = 3)) },
                     onEditSources = { push(Screen.Login(canGoBack = true)) },
                     onCheckUpdates = { container.updates.check() },
                 )
 
-                Screen.Organize -> OrganizeScreen(container)
+                is Screen.Organize -> OrganizeScreen(container, screen.tab)
 
                 Screen.Search -> SearchScreen(
                     container = container,

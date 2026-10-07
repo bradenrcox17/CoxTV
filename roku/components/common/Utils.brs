@@ -210,6 +210,20 @@ sub toggleTeam(key as string, display as string)
     toggleTeamIn("ncaaf", { key: key, display: display })
 end sub
 
+' Stars (on = true) or un-stars one team by its key (the Favorite teams screen).
+sub setTeamIn(sport as string, team as object, on as boolean)
+    teams = favoriteTeams()
+    lst = teams[sport]
+    if type(lst) <> "roArray" then lst = []
+    out = []
+    for each t in lst
+        if t.key <> team.key then out.Push(t)
+    end for
+    if on then out.Push({ key: team.key, display: team.display })
+    teams[sport] = out
+    regWrite("teams", FormatJson(teams))
+end sub
+
 sub toggleTeamIn(sport as string, team as object)
     teams = favoriteTeams()
     lst = teams[sport]
@@ -282,12 +296,24 @@ function teamWords(s as string) as object
     return out
 end function
 
+' A favorite's name without "University", "College" or a state tag, as games name schools
+' ("University of Tennessee" -> tennessee, "Loyola (IL)" -> loyola).
+function favoriteTeamWords(display as string) as object
+    all = teamWords(CreateObject("roRegex", "\([^)]*\)", "").ReplaceAll(display, " "))
+    out = {}
+    for each w in all
+        if w <> "university" and w <> "college" and w <> "of" and w <> "the" then out[w] = true
+    end for
+    if out.Count() = 0 then return all
+    return out
+end function
+
 ' Whether a game's team name means this favorite ("Braves" = "Atlanta Braves", but "Florida" is
 ' not "Florida State").
 function teamMatches(team as object, side as string) as boolean
     if team.display = invalid then return false
     if teamKey(team.display) = teamKey(side) or team.key = teamKey(side) then return true
-    t = teamWords(team.display)
+    t = favoriteTeamWords(team.display)
     s = teamWords(side)
     if t.Count() = 0 or s.Count() = 0 then return false
     sInT = true

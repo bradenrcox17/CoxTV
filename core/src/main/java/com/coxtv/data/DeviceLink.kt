@@ -202,6 +202,23 @@ class DeviceLink(private val settings: SettingsStore, http: OkHttpClient) {
         )
     }
 
+    /** A sport on the Favorite teams screen ("ncaaf" covers every NCAA school) and its teams. */
+    data class TeamSport(val id: String, val label: String, val teams: List<Team>)
+
+    /** Every team the Favorite teams screen offers, by sport. */
+    suspend fun teamCatalog(): List<TeamSport>? {
+        val json = getJson("/teams") ?: return null
+        val sports = json.optJSONArray("sports") ?: return null
+        return List(sports.length()) { i ->
+            val s = sports.getJSONObject(i)
+            val teams = s.optJSONArray("teams") ?: JSONArray()
+            TeamSport(
+                s.optString("id"), s.optString("label"),
+                List(teams.length()) { Team(teams.getJSONObject(it).optString("key"), teams.getJSONObject(it).optString("display")) },
+            )
+        }
+    }
+
     /** Synced settings: {"field": {"v": value, "t": ms}}. PUT sends changed fields (newest wins). */
     suspend fun prefs(put: JSONObject? = null): JSONObject? {
         val token = token() ?: return null

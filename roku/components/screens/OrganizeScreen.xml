@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Settings > Categories (params.mode = "categories") or Reorder favorites ("favorites"). -->
+<!-- Settings > Categories (params.mode = "categories"), Reorder favorites ("favorites"),
+     Hidden channels ("hidden") or Favorite teams ("teams"). -->
 <component name="OrganizeScreen" extends="BaseScreen">
   <script type="text/brightscript" uri="OrganizeScreen.brs" />
   <script type="text/brightscript" uri="pkg:/components/common/Utils.brs" />

@@ -247,13 +247,25 @@ class TvRepository(
     }.getOrDefault(emptyList())
 
     /** Adds or removes a favorite team (synced like favorites). */
-    suspend fun toggleTeam(team: DeviceLink.Team, sport: String = "ncaaf") {
+    suspend fun toggleTeam(team: DeviceLink.Team, sport: String = "ncaaf") = setTeam(team, sport, null)
+
+    /** Stars ([on] = true) or un-stars a team; null flips it. */
+    suspend fun setTeam(team: DeviceLink.Team, sport: String, on: Boolean?) {
         val all = runCatching { org.json.JSONObject(settings.teams.first()) }.getOrDefault(org.json.JSONObject())
         val current = teamsOf(all.toString(), sport)
-        val next = if (current.any { it.key == team.key }) current.filterNot { it.key == team.key } else current + team
+        val has = current.any { it.key == team.key }
+        val want = on ?: !has
+        if (want == has) return
+        val next = if (has) current.filterNot { it.key == team.key } else current + team
         all.put(sport, org.json.JSONArray(next.map { org.json.JSONObject().put("key", it.key).put("display", it.display) }))
         settings.setTeams(all.toString())
     }
+
+    private var teamCatalogCache: List<DeviceLink.TeamSport>? = null
+
+    /** Every team the Favorite teams screen offers (from the stream server); null if unavailable. */
+    suspend fun teamCatalog(): List<DeviceLink.TeamSport>? =
+        teamCatalogCache ?: runCatching { link.teamCatalog() }.getOrNull()?.takeIf { it.isNotEmpty() }?.also { teamCatalogCache = it }
 
     /** This week's games: live first, then by kickoff; null until loaded (or when not linked). */
     val cfbGuide: Flow<CfbGuide?> by lazy {

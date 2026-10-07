@@ -21,6 +21,21 @@ object Teams {
         else -> league.lowercase()
     }
 
+    /** The Favorite teams screen's sports, in order (the server's list says the same). */
+    val SPORTS = listOf(
+        "nfl" to "NFL", "ncaaf" to "College (all NCAA sports)", "nba" to "NBA", "wnba" to "WNBA",
+        "mlb" to "MLB", "nhl" to "NHL", "soccer" to "Soccer",
+    )
+
+    /** Teams whose name has every typed word ("tenn st" finds "Tennessee State"). */
+    fun search(teams: List<DeviceLink.Team>, query: String): List<DeviceLink.Team> {
+        val q = query.lowercase().split(Regex("""\s+""")).filter { it.isNotBlank() }
+        if (q.isEmpty()) return teams
+        // Names that start with the search first ("tenn": Tennessee before East Tennessee State).
+        return teams.filter { t -> val name = t.display.lowercase(); q.all { it in name } }
+            .sortedBy { if (it.display.lowercase().startsWith(q.first())) 0 else 1 }
+    }
+
     /** Short label for a sport list ("ncaaf" -> "NCAA"). */
     fun sportLabel(sport: String): String = when (sport) {
         "ncaaf" -> "NCAA"
@@ -53,10 +68,19 @@ object Teams {
     private val OTHER_SCHOOL = setOf("state", "st", "tech", "a&m", "am", "international", "southern", "northern",
         "eastern", "western", "central", "christian", "poly", "university", "college", "atlantic")
 
+    /** A favorite's name without "University", "College" or a state tag, as games name schools
+     * ("University of Tennessee" -> tennessee, "Loyola (IL)" -> loyola). */
+    private fun favoriteWords(display: String): Set<String> {
+        val all = words(display.replace(Regex("""\([^)]*\)"""), " "))
+        return (all - SCHOOL_FILLER).ifEmpty { all }
+    }
+
+    private val SCHOOL_FILLER = setOf("university", "college", "of", "the")
+
     /** Whether a game's team name means this favorite ("Braves" = "Atlanta Braves"). */
     fun matches(team: DeviceLink.Team, side: String): Boolean {
         if (key(team.display) == key(side) || team.key == key(side)) return true
-        val t = words(team.display)
+        val t = favoriteWords(team.display)
         val s = words(side)
         if (t.isEmpty() || s.isEmpty()) return false
         // Title says less ("Braves"), but not a different school ("Florida" isn't "Florida State").

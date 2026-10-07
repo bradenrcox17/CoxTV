@@ -76,6 +76,7 @@ fun HomeScreen(
     onOpenSearch: () -> Unit,
     onOrganize: () -> Unit,
     onEditSources: () -> Unit,
+    onFavoriteTeams: () -> Unit,
     onCheckUpdates: () -> Unit,
 ) {
     val repo = container.repository
@@ -233,6 +234,7 @@ fun HomeScreen(
                 item(key = "search") { SideItem("Search what's on", onFocused = cancelPending, onClick = onOpenSearch) }
                 item(key = "guide") { SideItem("TV Guide", onFocused = cancelPending, onClick = { onOpenGuide(if (category == Categories.CFB) Categories.ALL else category) }) }
                 item(key = "organize") { SideItem("Categories & favorites", onFocused = cancelPending, onClick = onOrganize) }
+                item(key = "teams") { SideItem("Favorite teams", onFocused = cancelPending, onClick = onFavoriteTeams) }
                 item(key = "refresh") { SideItem(if (refreshing) "Refreshing…" else "Refresh channels", onFocused = cancelPending, onClick = ::refreshChannels) }
                 item(key = "sources") { SideItem("Edit sources", onFocused = cancelPending, onClick = onEditSources) }
                 item(key = "updates") { SideItem("Check for updates", onFocused = cancelPending, onClick = onCheckUpdates) }

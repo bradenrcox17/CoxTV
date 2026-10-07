@@ -97,6 +97,12 @@ sub handleRequest(req as dynamic)
         result = { key: serverKey(req.id) }
     else if t = "cfbTeams" then
         result = { teams: cfbTeams(req.index) }
+    else if t = "teamCatalog" then
+        if m.teamCatalog = invalid then
+            got = deviceGet("/teams")
+            if got <> invalid and type(got.sports) = "roArray" then m.teamCatalog = got.sports
+        end if
+        result = { sports: m.teamCatalog }
     else if t = "syncNow" then
         m.cfbUntil = 0
         syncPrefs()

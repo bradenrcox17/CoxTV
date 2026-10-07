@@ -41,6 +41,7 @@ sub refreshMenu()
         labels.Push("Categories:  choose which show in the sidebar, and their order")
         labels.Push("Reorder favorites")
         labels.Push("Hidden channels")
+        labels.Push("Favorite teams:  NFL, college (every NCAA sport), NBA, WNBA, MLB, NHL, soccer")
         if regRead("deviceToken") <> "" then
             if useStreamServer() then state = "On" else state = "Off"
             labels.Push("Play through stream server:  " + state + "   (linked as " + valueOr(regRead("deviceName"), "this Roku") + ")")
@@ -81,6 +82,8 @@ sub onSelected()
     else if i = 7 then
         m.top.navigate = { action: "push", screen: "OrganizeScreen", params: { mode: "hidden" } }
     else if i = 8 then
+        m.top.navigate = { action: "push", screen: "OrganizeScreen", params: { mode: "teams" } }
+    else if i = 9 then
         if useStreamServer() then regWrite("useServer", "0") else regWrite("useServer", "1")
         m.status.color = "0x9AA3B2FF"
         if useStreamServer() then

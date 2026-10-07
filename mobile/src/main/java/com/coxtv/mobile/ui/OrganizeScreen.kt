@@ -43,14 +43,15 @@ import com.coxtv.data.Categories
 import com.coxtv.mobile.ui.theme.CoxColors
 import kotlinx.coroutines.launch
 
-/** Choose which categories appear as chips, their order, and the order of favorites. */
+/** Choose which categories appear as chips, their order, the order of favorites, hidden channels
+ * and favorite teams. */
 @Composable
-fun OrganizeScreen(container: AppContainer, onBack: () -> Unit) {
+fun OrganizeScreen(container: AppContainer, onBack: () -> Unit, initialTab: Int = 0) {
     val repo = container.repository
     val scope = rememberCoroutineScope()
     val options by repo.categoryOptions.collectAsStateWithLifecycle(emptyList())
     val channels by repo.channels.collectAsStateWithLifecycle(null)
-    var tab by rememberSaveable { mutableIntStateOf(0) }
+    var tab by rememberSaveable { mutableIntStateOf(initialTab) }
 
     val all = channels.orEmpty()
     val counts = remember(all) {
@@ -70,6 +71,7 @@ fun OrganizeScreen(container: AppContainer, onBack: () -> Unit) {
             Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("Categories") })
             Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("Favorites order") })
             Tab(selected = tab == 2, onClick = { tab = 2 }, text = { Text("Hidden") })
+            Tab(selected = tab == 3, onClick = { tab = 3 }, text = { Text("Teams") })
         }
 
         if (tab == 0) {
@@ -103,6 +105,8 @@ fun OrganizeScreen(container: AppContainer, onBack: () -> Unit) {
             }
         } else if (tab == 2) {
             HiddenList(container)
+        } else if (tab == 3) {
+            TeamsList(container)
         } else if (channels != null && favorites.isEmpty()) {
             Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
                 Text(

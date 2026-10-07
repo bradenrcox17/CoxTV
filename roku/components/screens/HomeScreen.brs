@@ -79,8 +79,8 @@ sub updateClock()
 end sub
 
 sub buildSide()
-    keys = ["#search", "#guide", "#settings"]
-    labels = ["Search what's on", "TV Guide", "Settings"]
+    keys = ["#search", "#guide", "#teams", "#settings"]
+    labels = ["Search what's on", "TV Guide", "Favorite teams", "Settings"]
     counts = {}
     counts.SetModeCaseSensitive()
     cats = m.global.bus.categories
@@ -216,6 +216,8 @@ sub onSideSelected()
         cat = m.current
         if cat = invalid or cat = "__cfb__" then cat = "__all__"
         m.top.navigate = { action: "push", screen: "GuideScreen", params: { category: cat } }
+    else if key = "#teams" then
+        m.top.navigate = { action: "push", screen: "OrganizeScreen", params: { mode: "teams" } }
     else if key = "#settings" then
         m.top.navigate = { action: "push", screen: "SetupScreen", params: { firstRun: false } }
     else if key <> m.current then

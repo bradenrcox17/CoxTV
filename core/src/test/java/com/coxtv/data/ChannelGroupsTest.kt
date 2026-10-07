@@ -148,6 +148,23 @@ class TeamsTest {
         assertFalse(Teams.matches(t("Tennessee Titans"), "Tennessee Volunteers"))
     }
 
+    @Test fun schoolNamesFromTheCollegeFootballTab() {
+        val tennessee = DeviceLink.Team("tennessee", "University of Tennessee")
+        assertTrue(Teams.matches(tennessee, "Tennessee"))
+        assertTrue(Teams.matches(tennessee, "Tennessee Volunteers"))
+        assertFalse(Teams.matches(tennessee, "Tennessee Tech"))
+        assertTrue(Teams.matches(DeviceLink.Team("auburn", "Auburn University"), "Auburn Tigers"))
+        assertFalse(Teams.matches(DeviceLink.Team("bostoncollege", "Boston College"), "Boston University"))
+        assertTrue(Teams.matches(DeviceLink.Team("loyolail", "Loyola (IL)"), "Loyola Chicago"))
+    }
+
+    @Test fun searchNeedsEveryWord() {
+        val teams = listOf(t("Tennessee"), t("Tennessee State"), t("Tennessee Titans"), t("Texas State"))
+        assertEquals(listOf("Tennessee State"), Teams.search(teams, "tenn st").map { it.display })
+        assertEquals(4, Teams.search(teams, "  ").size)
+        assertEquals("Tennessee", Teams.search(listOf(t("East Tennessee State"), t("Tennessee")), "tenn").first().display)
+    }
+
     @Test fun collegeTeamsSpanSports() {
         val favs = mapOf("ncaaf" to listOf(t("Duke")), "mlb" to listOf(t("Atlanta Braves")), "soccer" to listOf(t("Argentina")))
         assertTrue(Teams.isMine("College Basketball : Duke at North Carolina", "College Basketball", favs))
