@@ -76,7 +76,9 @@ fun ChannelsScreen(
             when {
                 last != null && last in cats && (last != Categories.FAVORITES || hasFavorites) -> last
                 hasFavorites && Categories.FAVORITES in cats -> Categories.FAVORITES
-                else -> cats.firstOrNull { it != Categories.FAVORITES } ?: cats.first()
+                // Not an empty Recent / Sports list: All Channels, else the first playlist group.
+                Categories.ALL in cats -> Categories.ALL
+                else -> cats.firstOrNull { !Categories.isBuiltIn(it) } ?: cats.first()
             },
         )
     }

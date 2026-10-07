@@ -173,12 +173,14 @@ function hasGroup(name as string) as boolean
     return false
 end function
 
-' First category in the sidebar, preferring one that isn't Favorites.
+' Category to open by default: All Channels, else the first playlist group, else whatever
+' is first (not an empty Recent or Sports list).
 function firstCategory() as string
+    if hasGroup("__all__") then return "__all__"
     first = ""
     for each k in m.sideKeys
         if Left(k, 1) <> "#" then
-            if k <> "__fav__" then return k
+            if not isBuiltInCategory(k) then return k
             if first = "" then first = k
         end if
     end for

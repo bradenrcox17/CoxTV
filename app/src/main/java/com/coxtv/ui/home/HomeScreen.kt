@@ -128,7 +128,9 @@ fun HomeScreen(
         selected = when {
             last != null && last in categories && (last != Categories.FAVORITES || hasFavorites) -> last
             hasFavorites && Categories.FAVORITES in categories -> Categories.FAVORITES
-            else -> categories.firstOrNull { it != Categories.FAVORITES } ?: categories.first()
+            // Not an empty Recent / Sports list: All Channels, else the first playlist group.
+            Categories.ALL in categories -> Categories.ALL
+            else -> categories.firstOrNull { !Categories.isBuiltIn(it) } ?: categories.first()
         }
         anchorCategory = selected
     }
