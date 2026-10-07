@@ -71,6 +71,7 @@ import androidx.tv.material3.Text
 import com.coxtv.AppContainer
 import com.coxtv.data.Categories
 import com.coxtv.data.CategoryExtras
+import com.coxtv.data.SetupCodes
 import com.coxtv.data.DeviceLink
 import com.coxtv.data.db.Channel
 import com.coxtv.data.db.ProgramEntity
@@ -228,6 +229,19 @@ fun PlayerScreen(
             listOfNotNull(container.link.streamUrl(ch)?.let { ch to it }) + repo.sourcesFor(ch).map { it to it.streamUrl }
         }
         sourceIndex = 0
+    }
+
+    // The stream server starts a channel in a few seconds; if it hasn't after 20, play the
+    // provider link directly instead of waiting on it.
+    LaunchedEffect(sources, sourceIndex, retryNonce) {
+        val viaServer = sources.firstOrNull()?.second?.startsWith(SetupCodes.SERVER + "/d/") == true
+        if (sourceIndex != 0 || sources.size < 2 || !viaServer) return@LaunchedEffect
+        delay(20_000)
+        if (!sourcePlayed && sourceIndex == 0) {
+            android.util.Log.i("CoxTV", "stream server slow to start; playing the provider link")
+            container.link.leave()
+            sourceIndex = 1
+        }
     }
 
     // Counts as recently watched once it has actually played for a few seconds.
