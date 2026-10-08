@@ -98,3 +98,8 @@ console.log('done');
 // Roku: the monogram for the in-app logo, and a white star (tinted orange or dark in the app).
 render('roku-monogram', 96, 96, page(96, 96, `<svg width="96" height="96" viewBox="0 0 180 180">${tile(40)}</svg>`));
 render('roku-star', 64, 64, page(64, 64, `<svg width="64" height="64" viewBox="0 0 24 24"><path d="M12 2.5l2.9 6.1 6.6.8-4.9 4.6 1.3 6.6L12 17.4l-5.9 3.2 1.3-6.6-4.9-4.6 6.6-.8z" fill="#FFFFFF"/></svg>`));
+
+// Website favicon: the monogram (the home-screen icons above keep the stacked wordmark).
+for (const S of [32, 48]) {
+  render(`favicon-monogram-${S}`, S, S, page(S, S, `<svg width="${S}" height="${S}" viewBox="0 0 180 180">${tile(40)}</svg>`));
+}
