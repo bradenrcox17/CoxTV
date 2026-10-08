@@ -103,3 +103,11 @@ render('roku-star', 64, 64, page(64, 64, `<svg width="64" height="64" viewBox="0
 for (const S of [32, 48]) {
   render(`favicon-monogram-${S}`, S, S, page(S, S, `<svg width="${S}" height="${S}" viewBox="0 0 180 180">${tile(40)}</svg>`));
 }
+
+// Phone home-screen icons (iPhone apple-touch-icon, Android manifest): the monogram on a
+// full-bleed square; the phone rounds the corners itself. The glyph stays inside the
+// maskable safe zone.
+for (const [n, S] of [['home-monogram-180', 180], ['home-monogram-192', 192], ['home-monogram-512', 512]]) {
+  render(n, S, S, page(S, S, `<svg width="${S}" height="${S}" viewBox="0 0 180 180"><rect width="180" height="180" fill="${TILE}"/>
+    <g transform="translate(90 90) scale(0.8) translate(-90 -90)">${glyph}</g></svg>`));
+}
