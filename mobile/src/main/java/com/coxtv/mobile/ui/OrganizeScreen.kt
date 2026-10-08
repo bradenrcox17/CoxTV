@@ -51,6 +51,7 @@ fun OrganizeScreen(container: AppContainer, onBack: () -> Unit, initialTab: Int 
     val scope = rememberCoroutineScope()
     val options by repo.categoryOptions.collectAsStateWithLifecycle(emptyList())
     val channels by repo.channels.collectAsStateWithLifecycle(null)
+    val loading by repo.channelsLoading.collectAsStateWithLifecycle(false)
     var tab by rememberSaveable { mutableIntStateOf(initialTab) }
 
     val all = channels.orEmpty()
@@ -93,7 +94,9 @@ fun OrganizeScreen(container: AppContainer, onBack: () -> Unit, initialTab: Int 
                     }
                 }
                 if (hidden.isNotEmpty()) {
-                    item(key = "h2") { Header("Add more", "Tap + to show a category.") }
+                    item(key = "h2") {
+                        Header("Add more", if (loading || channels.isNullOrEmpty()) "Loading your channel list… your provider's categories appear here when it finishes." else "Tap + to show a category.")
+                    }
                     items(hidden, key = { "h:${it.key}" }) { o ->
                         CategoryRow(o.key, counts[o.key]) {
                             IconButton(onClick = { scope.launch { repo.setCategoryEnabled(o.key, true) } }) {

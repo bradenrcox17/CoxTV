@@ -57,6 +57,7 @@ fun OrganizeScreen(container: AppContainer, initialTab: Int = 0) {
     val shown by repo.categories.collectAsStateCompat(null)
     val groups by repo.groups.collectAsStateCompat(emptyList())
     val channels by repo.channels.collectAsStateCompat(null)
+    val loading by repo.channelsLoading.collectAsStateCompat(false)
     var tab by rememberSaveable { mutableIntStateOf(initialTab) }
     val firstFocus = remember { FocusRequester() }
 
@@ -104,9 +105,13 @@ fun OrganizeScreen(container: AppContainer, initialTab: Int = 0) {
                     }
                 }
                 Spacer(Modifier.width(28.dp))
-                Pane("All categories", "Press OK to show or hide a category.", Modifier.weight(1f)) {
+                val allHint = if (loading || channels.isNullOrEmpty()) "Loading your channel list… your provider's categories appear here when it finishes."
+                    else "Press OK to show or hide a category."
+                Pane("All categories", allHint, Modifier.weight(1f)) {
                     // Fixed order (unlike the list on the left), so rows never move while you check them.
-                    val keys = remember(groups) { listOf(Categories.FAVORITES, Categories.ALL) + groups }
+                    // Built-ins (Recent, Sports on now, College Football, leagues) first, then the
+                    // provider's groups, like the phone and Roku apps.
+                    val keys = remember(groups) { (Categories.BUILT_INS + Categories.LEAGUE_KEYS + groups).distinct() }
                     LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         items(keys, key = { it }) { key ->
                             val on = key in enabledSet

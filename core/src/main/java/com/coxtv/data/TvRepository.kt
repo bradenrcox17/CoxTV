@@ -30,6 +30,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -527,7 +528,21 @@ class TvRepository(
         return count
     }
 
-    suspend fun refreshChannels(config: SourceConfig? = null): Int = withContext(Dispatchers.IO) {
+    private val loadingCount = kotlinx.coroutines.flow.MutableStateFlow(0)
+
+    /** True while the channel list is being (re)loaded, e.g. right after a setup code. */
+    val channelsLoading: Flow<Boolean> = loadingCount.map { it > 0 }
+
+    suspend fun refreshChannels(config: SourceConfig? = null): Int {
+        loadingCount.update { it + 1 }
+        try {
+            return doRefreshChannels(config)
+        } finally {
+            loadingCount.update { it - 1 }
+        }
+    }
+
+    private suspend fun doRefreshChannels(config: SourceConfig?): Int = withContext(Dispatchers.IO) {
         val started = System.nanoTime()
         val cfg = config ?: settings.config()
         if (!cfg.isConfigured) throw IOException("No source configured")
