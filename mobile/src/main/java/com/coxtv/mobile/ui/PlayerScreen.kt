@@ -438,7 +438,7 @@ private fun Overlay(
                         LinearProgressIndicator(
                             progress = { ((now - current.startMs).toFloat() / (current.endMs - current.startMs).coerceAtLeast(1)).coerceIn(0f, 1f) },
                             modifier = Modifier.width(160.dp).height(3.dp),
-                            drawStopIndicator = {},
+                            drawStopIndicator = {}, trackColor = com.coxtv.mobile.ui.theme.CoxColors.PanelHi,
                         )
                         Spacer(Modifier.width(10.dp))
                         Text(minutesLeft(current.endMs, now), color = CoxColors.TextDim, style = MaterialTheme.typography.bodySmall)

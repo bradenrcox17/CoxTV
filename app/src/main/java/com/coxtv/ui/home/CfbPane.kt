@@ -167,10 +167,10 @@ private fun GameRow(row: TvRepository.CfbRow, modifier: Modifier, onClick: () ->
         Row(Modifier.fillMaxSize().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(
                 Modifier.width(56.dp).height(28.dp)
-                    .background(if (row.game.live) Color(0xFFC62828) else Color.White.copy(alpha = 0.08f), RoundedCornerShape(6.dp)),
+                    .background(if (row.game.live) CoxColors.Accent else Color.White.copy(alpha = 0.08f), RoundedCornerShape(6.dp)),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(if (row.game.live) "LIVE" else "🏈", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                Text(if (row.game.live) "LIVE" else "CFB", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = if (row.game.live) CoxColors.OnAccent else LocalContentColor.current)
             }
             Column(Modifier.weight(1f).padding(start = 12.dp)) {
                 Text(cfbMatchup(row.game), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -182,7 +182,7 @@ private fun GameRow(row: TvRepository.CfbRow, modifier: Modifier, onClick: () ->
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            if (row.mine) Text("★", color = CoxColors.Fav, modifier = Modifier.padding(start = 8.dp))
+            if (row.mine) Text("★", color = com.coxtv.ui.theme.accentOnRow(), modifier = Modifier.padding(start = 8.dp))
         }
     }
 }

@@ -1,5 +1,7 @@
 sub init()
     m.menu = m.top.findNode("menu")
+    m.menu.font = coxFont("regular", 34)
+    m.menu.focusedFont = coxFont("semibold", 34)
     m.status = m.top.findNode("status")
     m.menu.observeField("itemSelected", "onSelected")
     m.top.observeField("active", "onActive")
@@ -64,7 +66,7 @@ end function
 sub onSelected()
     i = m.menu.itemSelected
     m.status.text = ""
-    m.status.color = "0xFF6B6BFF"
+    m.status.color = "0xFF6B5EFF"
     if i = 0 then
         editField("code", "Setup code from tv.thecoxhome.com (like K7P-2QX)", "")
     else if i = 1 then
@@ -85,7 +87,7 @@ sub onSelected()
         m.top.navigate = { action: "push", screen: "OrganizeScreen", params: { mode: "teams" } }
     else if i = 9 then
         if useStreamServer() then regWrite("useServer", "0") else regWrite("useServer", "1")
-        m.status.color = "0x9AA3B2FF"
+        m.status.color = "0xA3A3A8FF"
         if useStreamServer() then
             m.status.text = "Channels play through your stream server (TVs on the same channel share one connection)."
         else
@@ -220,7 +222,7 @@ sub applyXtreamLogin()
     regWrite("xtServer", m.xtServer)
     regWrite("xtUser", m.xtUser)
     regWrite("xtPass", m.xtPass)
-    m.status.color = "0x5BD68AFF"
+    m.status.color = "0xFF8200FF"
     m.status.text = "Playlist and guide URLs filled in from your login - choose Save and load channels"
 end sub
 
@@ -254,7 +256,7 @@ sub redeemCode(code as string)
         m.status.text = "Setup codes have 6 letters and numbers, like K7P-2QX."
         return
     end if
-    m.status.color = "0x9AA3B2FF"
+    m.status.color = "0xA3A3A8FF"
     m.status.text = "Checking the code..."
     m.codeReply = svcCall({ type: "setupCode", code: clean }, "onCodeReply")
 end sub
@@ -264,7 +266,7 @@ sub onCodeReply(event as object)
     m.codeReply = invalid
     r = event.getData()
     if r.error <> invalid and r.error <> "" then
-        m.status.color = "0xFF6B6BFF"
+        m.status.color = "0xFF6B5EFF"
         m.status.text = r.error
         return
     end if
@@ -276,7 +278,7 @@ sub onCodeReply(event as object)
     ' The stream server's ready-made guide loads in seconds on a Roku; the provider's raw
     ' guide takes minutes.
     m.epg = r.guide
-    m.status.color = "0x5BD68AFF"
+    m.status.color = "0xFF8200FF"
     m.status.text = "Got your links - loading channels..."
     refreshMenu()
     save()

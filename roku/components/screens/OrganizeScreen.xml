@@ -5,12 +5,12 @@
   <script type="text/brightscript" uri="OrganizeScreen.brs" />
   <script type="text/brightscript" uri="pkg:/components/common/Utils.brs" />
   <children>
-    <Label id="title" translation="[120,60]" font="font:LargeBoldSystemFont" color="0xF2F4F8FF" />
-    <Label id="hint" translation="[120,130]" width="1680" wrap="true" maxLines="2" font="font:SmallSystemFont" color="0x9AA3B2FF" />
-    <Rectangle translation="[100,220]" width="1720" height="790" color="0x141821FF" />
+    <Label id="title" translation="[120,60]" color="0xEDEDEDFF"><Font role="font" uri="pkg:/fonts/geist_bold.ttf" size="46" /></Label>
+    <Label id="hint" translation="[120,130]" width="1680" wrap="true" maxLines="2" color="0xA3A3A8FF"><Font role="font" uri="pkg:/fonts/geist_regular.ttf" size="28" /></Label>
+    <Rectangle translation="[100,220]" width="1720" height="790" color="0x141416FF" />
     <MarkupList id="list" translation="[160,240]" itemComponentName="OrganizeItem" itemSize="[1600,80]"
                 itemSpacing="[0,6]" numRows="9" drawFocusFeedback="false" vertFocusAnimationStyle="floatingFocus" />
-    <Label id="empty" translation="[160,560]" width="1600" horizAlign="center" wrap="true" font="font:MediumSystemFont" color="0x9AA3B2FF" />
-    <Label id="status" translation="[120,1020]" width="1680" font="font:SmallBoldSystemFont" color="0xE0A030FF" />
+    <Label id="empty" translation="[160,560]" width="1600" horizAlign="center" wrap="true" color="0xA3A3A8FF"><Font role="font" uri="pkg:/fonts/geist_regular.ttf" size="34" /></Label>
+    <Label id="status" translation="[120,1020]" width="1680" color="0xFF8200FF"><Font role="font" uri="pkg:/fonts/geist_semibold.ttf" size="28" /></Label>
   </children>
 </component>

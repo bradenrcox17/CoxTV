@@ -21,4 +21,20 @@ sub onFocus()
     else
         m.bg.opacity = m.top.focusPercent * 0.25
     end if
+    paintRowText(m.top.listHasFocus and m.top.focusPercent > 0.5)
 end sub
+
+' Focused rows are orange with dark text; the normal colors come back when focus leaves.
+sub paintRowText(focused as boolean)
+    if m.baseColors = invalid then
+        m.baseColors = {}
+        for each id in ["title", "sub"]
+            n = m.top.findNode(id)
+            if n <> invalid then m.baseColors[id] = n.color
+        end for
+    end if
+    for each id in m.baseColors
+        if focused then m.top.findNode(id).color = "0x0A0A0BFF" else m.top.findNode(id).color = m.baseColors[id]
+    end for
+end sub
+

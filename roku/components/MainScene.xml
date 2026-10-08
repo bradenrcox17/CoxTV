@@ -3,7 +3,7 @@
   <script type="text/brightscript" uri="MainScene.brs" />
   <script type="text/brightscript" uri="pkg:/components/common/Utils.brs" />
   <children>
-    <Rectangle id="bg" width="1920" height="1080" color="0x0A0C10FF" />
+    <Rectangle id="bg" width="1920" height="1080" color="0x0A0A0BFF" />
     <Group id="screens" />
   </children>
 </component>

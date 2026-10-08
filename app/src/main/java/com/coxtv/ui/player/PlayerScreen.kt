@@ -529,7 +529,7 @@ private fun InfoOverlay(
             Column(Modifier.width(150.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 ChannelLogo(channel, Modifier.size(width = 130.dp, height = 78.dp))
                 Spacer(Modifier.height(6.dp))
-                Text(channel.number.toString(), fontSize = 30.sp, fontWeight = FontWeight.Bold)
+                Text(channel.number.toString(), fontSize = 30.sp, fontFamily = com.coxtv.ui.theme.CoxFonts.Mono)
             }
             Spacer(Modifier.width(24.dp))
             Column(Modifier.weight(1f)) {
@@ -639,7 +639,7 @@ private fun MiniGuide(
                         },
                 ) {
                     Row(Modifier.fillMaxSize().padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(ch.number.toString(), modifier = Modifier.width(44.dp), style = MaterialTheme.typography.titleSmall, color = LocalContentColor.current.copy(alpha = 0.7f))
+                        Text(ch.number.toString(), modifier = Modifier.width(64.dp), style = MaterialTheme.typography.titleSmall.copy(fontFamily = com.coxtv.ui.theme.CoxFonts.Mono), color = LocalContentColor.current.copy(alpha = 0.7f), maxLines = 1)
                         Column(Modifier.weight(1f)) {
                             Text(ch.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             if (program != null) {
@@ -650,7 +650,7 @@ private fun MiniGuide(
                                 )
                             }
                         }
-                        if (ch.favorite) Text("★", color = CoxColors.Fav, fontSize = 16.sp)
+                        if (ch.favorite) Text("★", color = com.coxtv.ui.theme.accentOnRow(), fontSize = 16.sp)
                     }
                 }
             }

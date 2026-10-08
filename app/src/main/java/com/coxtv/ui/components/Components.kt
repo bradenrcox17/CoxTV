@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
@@ -57,9 +58,9 @@ fun FocusTile(
             containerColor = if (selected) CoxColors.AccentDim else Color.Transparent,
             contentColor = CoxColors.Text,
             focusedContainerColor = CoxColors.Accent,
-            focusedContentColor = Color.White,
+            focusedContentColor = CoxColors.OnAccent,
             pressedContainerColor = CoxColors.Accent,
-            pressedContentColor = Color.White,
+            pressedContentColor = CoxColors.OnAccent,
         ),
         scale = ClickableSurfaceDefaults.scale(focusedScale = focusedScale),
         content = content,
@@ -81,9 +82,9 @@ fun CoxButton(
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(10.dp)),
         colors = ClickableSurfaceDefaults.colors(
             containerColor = if (primary) CoxColors.AccentDim else CoxColors.PanelHi,
-            contentColor = CoxColors.Text,
+            contentColor = if (primary) CoxColors.Accent else CoxColors.Text,
             focusedContainerColor = CoxColors.Accent,
-            focusedContentColor = Color.White,
+            focusedContentColor = CoxColors.OnAccent,
             disabledContainerColor = CoxColors.Panel,
             disabledContentColor = CoxColors.TextDim,
         ),
@@ -165,19 +166,31 @@ fun rememberTimeFormatter(): TimeFormatter {
 fun <T> kotlinx.coroutines.flow.Flow<T>.collectAsStateCompat(initial: T): State<T> =
     collectAsStateWithLifecycle(initial)
 
-/** The CoxTV wordmark: white "Cox", blue "TV" (same as the launcher and Roku artwork). */
+/** The CoxTV logo: the C monogram and the wordmark (white "Cox", orange "TV"), as on the
+ * launcher icon, the Roku poster and the website. */
 @Composable
-fun CoxWordmark(fontSize: androidx.compose.ui.unit.TextUnit, modifier: Modifier = Modifier) {
-    Text(
-        androidx.compose.ui.text.buildAnnotatedString {
-            withStyle(androidx.compose.ui.text.SpanStyle(color = Color.White)) { append("Cox") }
-            withStyle(androidx.compose.ui.text.SpanStyle(color = CoxColors.LogoBlue)) { append("TV") }
-        },
-        modifier = modifier,
-        fontSize = fontSize,
-        fontWeight = FontWeight.Bold,
-    )
+fun CoxWordmark(fontSize: androidx.compose.ui.unit.TextUnit, modifier: Modifier = Modifier, monogram: Boolean = true) {
+    androidx.compose.foundation.layout.Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+        if (monogram) {
+            val size = with(androidx.compose.ui.platform.LocalDensity.current) { (fontSize * 1.25f).toDp() }
+            androidx.compose.foundation.Image(
+                androidx.compose.ui.res.painterResource(com.coxtv.core.R.drawable.cox_monogram),
+                contentDescription = null,
+                modifier = Modifier.padding(end = size * 0.32f).size(size),
+            )
+        }
+        Text(
+            androidx.compose.ui.text.buildAnnotatedString {
+                withStyle(androidx.compose.ui.text.SpanStyle(color = CoxColors.Text)) { append("Cox") }
+                withStyle(androidx.compose.ui.text.SpanStyle(color = CoxColors.Accent)) { append("TV") }
+            },
+            fontSize = fontSize,
+            fontWeight = FontWeight.ExtraBold,
+            letterSpacing = androidx.compose.ui.unit.TextUnit(-0.04f, androidx.compose.ui.unit.TextUnitType.Em),
+        )
+    }
 }
+
 
 @Composable
 fun Clock(modifier: Modifier = Modifier) {

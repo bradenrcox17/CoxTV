@@ -5,5 +5,5 @@
         <item name="android:windowNoTitle">true</item>
         <item name="android:windowFullscreen">true</item>
     </style>
-    <color name="background">#FF0A0C10</color>
+    <color name="background">#FF0A0A0B</color>
 </resources>

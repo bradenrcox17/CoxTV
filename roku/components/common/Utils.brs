@@ -191,6 +191,14 @@ end function
 ' with tv.thecoxhome.com and the other apps. College teams share one list ("ncaaf", the key the
 ' dashboard's College Football tab uses), so a school starred in any NCAA sport counts in all.
 ' Same rules as the Android apps (Teams.kt) and the web player (watch.js).
+' A Geist font node ("regular", "semibold", "bold", "black" or "mono") at an FHD pixel size.
+function coxFont(weight as string, size as integer) as object
+    f = CreateObject("roSGNode", "Font")
+    f.uri = "pkg:/fonts/geist_" + weight + ".ttf"
+    f.size = size
+    return f
+end function
+
 function favoriteTeams() as object
     v = ParseJson(regRead("teams", "{}"))
     if type(v) <> "roAssociativeArray" then v = {}

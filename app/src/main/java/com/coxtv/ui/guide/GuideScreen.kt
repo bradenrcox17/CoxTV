@@ -267,7 +267,7 @@ private fun GuideRow(
             Modifier.width(CHANNEL_COL).fillMaxHeight().background(CoxColors.Panel, RoundedCornerShape(6.dp)).padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(channel.number.toString(), modifier = Modifier.width(40.dp), style = MaterialTheme.typography.labelLarge, color = CoxColors.TextDim)
+            Text(channel.number.toString(), modifier = Modifier.width(56.dp), style = MaterialTheme.typography.labelLarge.copy(fontFamily = com.coxtv.ui.theme.CoxFonts.Mono), color = CoxColors.TextDim, maxLines = 1)
             Text(
                 channel.name,
                 style = MaterialTheme.typography.labelLarge,
@@ -275,7 +275,7 @@ private fun GuideRow(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
-            if (channel.favorite) Text("★", color = CoxColors.Fav, fontSize = 14.sp)
+            if (channel.favorite) Text("★", color = com.coxtv.ui.theme.accentOnRow(), fontSize = 14.sp)
         }
         Box(Modifier.weight(1f).fillMaxHeight()) {
             val visible = programs?.filter { it.endMs > windowStart && it.startMs < windowEnd }
@@ -347,7 +347,7 @@ private fun ProgramCell(
             containerColor = if (airing) CoxColors.PanelHi else CoxColors.Panel,
             contentColor = if (dim) CoxColors.TextDim else CoxColors.Text,
             focusedContainerColor = CoxColors.Accent,
-            focusedContentColor = Color.White,
+            focusedContentColor = CoxColors.OnAccent,
         ),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
     ) {

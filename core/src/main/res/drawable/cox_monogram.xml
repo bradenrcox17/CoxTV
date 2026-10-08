@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The CoxTV monogram: an open orange C around a play triangle, on a dark rounded tile.
+     Same geometry as the app icons (180x180 master). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="34dp"
+    android:height="34dp"
+    android:viewportWidth="180"
+    android:viewportHeight="180">
+    <path
+        android:fillColor="#141416"
+        android:pathData="M40,0 L140,0 A40,40 0 0 1 180,40 L180,140 A40,40 0 0 1 140,180 L40,180 A40,40 0 0 1 0,140 L0,40 A40,40 0 0 1 40,0 Z" />
+    <path
+        android:strokeColor="#FF8200"
+        android:strokeWidth="20"
+        android:strokeLineCap="round"
+        android:pathData="M126,58 A48,48 0 1 0 126,122" />
+    <path
+        android:fillColor="#EDEDED"
+        android:pathData="M82,72 L108,90 L82,108 Z" />
+</vector>

@@ -7,8 +7,8 @@
   </interface>
   <script type="text/brightscript" uri="SearchItem.brs" />
   <children>
-    <Rectangle id="bg" width="1100" height="100" color="0x2F80FFFF" opacity="0" />
-    <Label id="title" translation="[24,10]" width="1052" height="46" font="font:MediumBoldSystemFont" color="0xFFFFFFFF" />
-    <Label id="sub" translation="[24,56]" width="1052" height="34" font="font:SmallSystemFont" color="0xB8C0CCFF" />
+    <Rectangle id="bg" width="1100" height="100" color="0xFF8200FF" opacity="0" />
+    <Label id="title" translation="[24,10]" width="1052" height="46" color="0xFFFFFFFF"><Font role="font" uri="pkg:/fonts/geist_semibold.ttf" size="34" /></Label>
+    <Label id="sub" translation="[24,56]" width="1052" height="34" color="0xC2C2C6FF"><Font role="font" uri="pkg:/fonts/geist_regular.ttf" size="28" /></Label>
   </children>
 </component>

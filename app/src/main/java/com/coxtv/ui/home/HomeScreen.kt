@@ -322,6 +322,22 @@ fun HomeScreen(
                 ) {
                     items(visible, key = { it.id }) { ch ->
                         val program = ch.epgId?.let { nowPlaying[it] }
+                        // Your team's game: a large card (same row, same focus behavior).
+                        val myGame = if (category == Categories.SPORTS || Categories.leagueOf(category) != null)
+                            extras.sports.firstOrNull { it.channel.id == ch.id && it.mine } else null
+                        if (myGame != null) {
+                            YourTeamRow(
+                                channel = ch,
+                                league = myGame.league,
+                                title = myGame.title,
+                                program = program,
+                                now = now,
+                                modifier = if (ch.id == focusTargetId) Modifier.focusRequester(lastChannelFocus) else Modifier,
+                                onClick = { onPlay(ch.id, category) },
+                                onOptions = { menuFor = ch },
+                            )
+                            return@items
+                        }
                         ChannelRow(
                             channel = ch,
                             program = program,
@@ -451,8 +467,9 @@ private fun ChannelRow(
         Row(Modifier.fillMaxSize().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(
                 channel.number.toString(),
-                modifier = Modifier.width(48.dp),
-                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.width(76.dp),
+                style = MaterialTheme.typography.titleSmall.copy(fontFamily = com.coxtv.ui.theme.CoxFonts.Mono),
+                maxLines = 1,
                 color = LocalContentColor.current.copy(alpha = 0.7f),
             )
             Column(Modifier.weight(1f)) {
@@ -469,11 +486,74 @@ private fun ChannelRow(
                 if (program != null) {
                     Spacer(Modifier.height(3.dp))
                     val fraction = (now - program.startMs).toFloat() / (program.endMs - program.startMs).coerceAtLeast(1)
-                    ProgressLine(fraction, Modifier.width(220.dp))
+                    ProgressLine(fraction, Modifier.width(220.dp), color = com.coxtv.ui.theme.accentOnRow())
                 }
             }
             if (channel.favorite) {
-                Text("★", color = CoxColors.Fav, fontSize = 20.sp, modifier = Modifier.padding(start = 8.dp))
+                Text("★", color = com.coxtv.ui.theme.accentOnRow(), fontSize = 20.sp, modifier = Modifier.padding(start = 8.dp))
+            }
+        }
+    }
+}
+
+/** A live game for one of your teams: taller, with a LIVE badge and the matchup up front. */
+@Composable
+private fun YourTeamRow(
+    channel: Channel,
+    league: String,
+    title: String,
+    program: ProgramEntity?,
+    now: Long,
+    modifier: Modifier,
+    onClick: () -> Unit,
+    onOptions: () -> Unit,
+) {
+    FocusTile(
+        onClick = onClick,
+        onLongClick = onOptions,
+        selected = true,
+        focusedScale = 1.01f,
+        modifier = modifier.fillMaxWidth().height(116.dp).onPreviewKeyEvent {
+            if (it.type == KeyEventType.KeyDown && it.key == Key.Menu) {
+                onOptions(); true
+            } else false
+        },
+    ) {
+        Row(Modifier.fillMaxSize().padding(horizontal = 22.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    val focused = LocalContentColor.current == CoxColors.OnAccent
+                    Text(
+                        "LIVE",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                        color = if (focused) CoxColors.Accent else CoxColors.OnAccent,
+                        modifier = Modifier
+                            .background(if (focused) CoxColors.OnAccent else CoxColors.Accent, androidx.compose.foundation.shape.RoundedCornerShape(50))
+                            .padding(horizontal = 9.dp, vertical = 2.dp),
+                    )
+                    Text("  ★ Your team", style = MaterialTheme.typography.titleSmall, color = com.coxtv.ui.theme.accentOnRow())
+                    Text(
+                        "   $league · ${channel.number}  ${channel.name}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = LocalContentColor.current.copy(alpha = 0.75f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Spacer(Modifier.height(6.dp))
+                val sides = Teams.sides(title)
+                Text(
+                    if (sides.size == 2) "${sides[0]} vs ${sides[1]}" else title,
+                    style = MaterialTheme.typography.headlineSmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (program != null) {
+                    Spacer(Modifier.height(6.dp))
+                    val fraction = (now - program.startMs).toFloat() / (program.endMs - program.startMs).coerceAtLeast(1)
+                    ProgressLine(fraction, Modifier.width(260.dp), color = com.coxtv.ui.theme.accentOnRow())
+                }
             }
         }
     }

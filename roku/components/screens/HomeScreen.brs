@@ -1,5 +1,7 @@
 sub init()
     m.side = m.top.findNode("side")
+    m.side.font = coxFont("regular", 30)
+    m.side.focusedFont = coxFont("semibold", 30)
     m.list = m.top.findNode("channels")
     m.catTitle = m.top.findNode("catTitle")
     m.catCount = m.top.findNode("catCount")

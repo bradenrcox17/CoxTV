@@ -15,10 +15,10 @@ sub init()
     m.PAGE = 25
     m.pps = m.GRID_W / m.WIN
 
-    m.COLOR_PANEL = "0x141821FF"
-    m.COLOR_AIRING = "0x1F2532FF"
-    m.COLOR_FOCUS = "0x2F80FFFF"
-    m.COLOR_ROW = "0x1B3E73FF"
+    m.COLOR_PANEL = "0x141416FF"
+    m.COLOR_AIRING = "0x1E1E21FF"
+    m.COLOR_FOCUS = "0xFF8200FF"
+    m.COLOR_ROW = "0x3A2410FF"
 
     m.title = m.top.findNode("title")
     m.meta = m.top.findNode("meta")
@@ -130,8 +130,8 @@ sub buildRuler()
         lbl = ruler.createChild("Label")
         lbl.translation = [m.GRID_X + i * (m.GRID_W / 4) + 8, 258]
         lbl.width = m.GRID_W / 4 - 16
-        lbl.font = "font:SmallSystemFont"
-        lbl.color = "0x9AA3B2FF"
+        lbl.font = coxFont("regular", 28)
+        lbl.color = "0xA3A3A8FF"
         m.rulerLabels.Push(lbl)
     end for
 end sub
@@ -152,15 +152,15 @@ sub buildRows()
         num.width = 70
         num.height = m.ROW_H - 8
         num.vertAlign = "center"
-        num.font = "font:SmallSystemFont"
-        num.color = "0x9AA3B2FF"
+        num.font = coxFont("mono", 28)
+        num.color = "0xA3A3A8FF"
         name = g.createChild("Label")
         name.translation = [m.CH_X + 90, 0]
         name.width = m.CH_W - 100
         name.height = m.ROW_H - 8
         name.vertAlign = "center"
-        name.font = "font:SmallBoldSystemFont"
-        name.color = "0xF2F4F8FF"
+        name.font = coxFont("semibold", 28)
+        name.color = "0xEDEDEDFF"
         cells = g.createChild("Group")
         m.rows.Push({ group: g, bg: bg, num: num, name: name, cellGroup: cells, cells: [] })
     end for
@@ -174,8 +174,8 @@ function getCell(row as object, i as integer) as object
         lbl.translation = [14, 0]
         lbl.height = m.ROW_H - 8
         lbl.vertAlign = "center"
-        lbl.font = "font:SmallSystemFont"
-        lbl.color = "0xF2F4F8FF"
+        lbl.font = coxFont("regular", 28)
+        lbl.color = "0xEDEDEDFF"
         row.cells.Push({ rect: rect, label: lbl })
     end while
     return row.cells[i]

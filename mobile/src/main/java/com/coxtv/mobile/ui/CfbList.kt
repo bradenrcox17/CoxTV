@@ -126,10 +126,10 @@ private fun GameItem(row: TvRepository.CfbRow, mine: Set<String>, onClick: () ->
             leadingContent = {
                 Box(
                     Modifier.width(48.dp).height(26.dp)
-                        .background(if (row.game.live) Color(0xFFC62828) else Color.White.copy(alpha = 0.08f), RoundedCornerShape(6.dp)),
+                        .background(if (row.game.live) com.coxtv.mobile.ui.theme.CoxColors.Accent else Color.White.copy(alpha = 0.08f), RoundedCornerShape(6.dp)),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(if (row.game.live) "LIVE" else "🏈", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                    Text(if (row.game.live) "LIVE" else "CFB", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = if (row.game.live) com.coxtv.mobile.ui.theme.CoxColors.OnAccent else com.coxtv.mobile.ui.theme.CoxColors.Text)
                 }
             },
             headlineContent = {

@@ -1,5 +1,5 @@
 sub init()
-    m.top.backgroundColor = "0x0A0C10FF"
+    m.top.backgroundColor = "0x0A0A0BFF"
     m.top.backgroundUri = ""
     m.screens = m.top.findNode("screens")
     m.stack = []

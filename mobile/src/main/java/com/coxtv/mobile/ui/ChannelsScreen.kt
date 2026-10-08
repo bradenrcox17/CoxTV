@@ -4,6 +4,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.DropdownMenu
+import androidx.compose.foundation.background
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
@@ -170,9 +171,44 @@ fun ChannelsScreen(
                             ?.let { g -> Teams.inGame(g.title, g.league, allTeams).map { (t, mine) -> Triple(t, mine, Teams.sportFor(g.league)) } }
                             .orEmpty(),
                         onToggleTeam = { team, sport -> scope.launch { repo.toggleTeam(team, sport) } },
+                        // Your team's game: shown as a card.
+                        featured = (if (cat == Categories.SPORTS || Categories.leagueOf(cat) != null)
+                            extras.sports.firstOrNull { it.channel.id == ch.id && it.mine } else null)
+                            ?.let { it.league to it.title },
                     )
                 }
             }
+        }
+    }
+}
+
+/** A live game for one of your teams: LIVE badge and the matchup up front. */
+@Composable
+private fun YourTeamCard(channel: Channel, league: String, title: String, program: ProgramEntity?, now: Long, modifier: Modifier) {
+    Column(
+        modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)
+            .background(CoxColors.PanelHi, androidx.compose.foundation.shape.RoundedCornerShape(18.dp))
+            .padding(horizontal = 18.dp, vertical = 16.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "LIVE",
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold,
+                color = CoxColors.OnAccent,
+                modifier = Modifier.background(CoxColors.Accent, androidx.compose.foundation.shape.RoundedCornerShape(50)).padding(horizontal = 8.dp, vertical = 2.dp),
+            )
+            Text("  ★ Your team", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = CoxColors.Accent)
+        }
+        Spacer(Modifier.height(8.dp))
+        val sides = com.coxtv.data.Teams.sides(title)
+        Text(if (sides.size == 2) "${sides[0]} vs ${sides[1]}" else title, style = MaterialTheme.typography.titleLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Spacer(Modifier.height(4.dp))
+        Text("$league · ${channel.number}  ${channel.name}", style = MaterialTheme.typography.bodyMedium, color = CoxColors.TextDim, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        if (program != null) {
+            Spacer(Modifier.height(10.dp))
+            val fraction = (now - program.startMs).toFloat() / (program.endMs - program.startMs).coerceAtLeast(1)
+            LinearProgressIndicator(progress = { fraction.coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth(0.7f).height(3.dp), drawStopIndicator = {}, trackColor = com.coxtv.mobile.ui.theme.CoxColors.PanelHi)
         }
     }
 }
@@ -191,18 +227,22 @@ private fun ChannelRow(
     onCast: (DeviceLink.Tv) -> Unit,
     teams: List<Triple<DeviceLink.Team, Boolean, String>> = emptyList(),
     onToggleTeam: (DeviceLink.Team, String) -> Unit = { _, _ -> },
+    featured: Pair<String, String>? = null,
 ) {
     var menu by remember { mutableStateOf(false) }
     Box {
-        ListItem(
+        if (featured != null) {
+            YourTeamCard(channel, featured.first, featured.second, program, now, Modifier.combinedClickable(onClick = onClick, onLongClick = { menu = true }))
+        } else ListItem(
             modifier = Modifier.combinedClickable(onClick = onClick, onLongClick = { menu = true }),
             colors = ListItemDefaults.colors(containerColor = CoxColors.Bg),
             leadingContent = {
                 Text(
                     channel.number.toString(),
-                    style = MaterialTheme.typography.titleSmall,
+                    style = MaterialTheme.typography.titleSmall.copy(fontFamily = com.coxtv.mobile.ui.theme.CoxFonts.Mono),
                     color = CoxColors.TextDim,
-                    modifier = Modifier.width(44.dp),
+                    maxLines = 1,
+                    modifier = Modifier.width(52.dp),
                 )
             },
             headlineContent = {
@@ -218,7 +258,7 @@ private fun ChannelRow(
                             LinearProgressIndicator(
                                 progress = { fraction.coerceIn(0f, 1f) },
                                 modifier = Modifier.fillMaxWidth(0.7f).height(3.dp),
-                                drawStopIndicator = {},
+                                drawStopIndicator = {}, trackColor = com.coxtv.mobile.ui.theme.CoxColors.PanelHi,
                             )
                         }
                     }

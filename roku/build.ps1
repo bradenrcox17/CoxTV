@@ -11,7 +11,7 @@ if (Test-Path $Out) { Remove-Item $Out -Force }
 # Build the zip by hand so entry names use forward slashes (Compress-Archive on
 # Windows PowerShell 5.1 writes backslashes, which Roku rejects).
 $files = @(Get-Item (Join-Path $root 'manifest')) +
-    @(Get-ChildItem -Recurse -File (Join-Path $root 'source'), (Join-Path $root 'components'), (Join-Path $root 'images'))
+    @(Get-ChildItem -Recurse -File (Join-Path $root 'source'), (Join-Path $root 'components'), (Join-Path $root 'images'), (Join-Path $root 'fonts'))
 $zip = [System.IO.Compression.ZipFile]::Open($Out, 'Create')
 try {
     foreach ($f in $files) {

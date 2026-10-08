@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -88,18 +90,27 @@ fun CategoryChips(
     }
 }
 
-/** The CoxTV wordmark: white "Cox", blue "TV" (same as the launcher and Roku artwork). */
+/** The CoxTV logo: the C monogram and the wordmark (white "Cox", orange "TV"), as on the
+ * launcher icon, the TVs and the website. */
 @Composable
 fun CoxWordmark(style: androidx.compose.ui.text.TextStyle, modifier: Modifier = Modifier) {
-    androidx.compose.material3.Text(
-        androidx.compose.ui.text.buildAnnotatedString {
-            withStyle(androidx.compose.ui.text.SpanStyle(color = Color.White)) { append("Cox") }
-            withStyle(androidx.compose.ui.text.SpanStyle(color = com.coxtv.mobile.ui.theme.CoxColors.LogoBlue)) { append("TV") }
-        },
-        modifier = modifier,
-        style = style,
-        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-    )
+    androidx.compose.foundation.layout.Row(modifier, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        val size = with(androidx.compose.ui.platform.LocalDensity.current) { (style.fontSize * 1.25f).toDp() }
+        androidx.compose.foundation.Image(
+            androidx.compose.ui.res.painterResource(com.coxtv.core.R.drawable.cox_monogram),
+            contentDescription = null,
+            modifier = Modifier.padding(end = size * 0.3f).size(size),
+        )
+        androidx.compose.material3.Text(
+            androidx.compose.ui.text.buildAnnotatedString {
+                withStyle(androidx.compose.ui.text.SpanStyle(color = com.coxtv.mobile.ui.theme.CoxColors.Text)) { append("Cox") }
+                withStyle(androidx.compose.ui.text.SpanStyle(color = com.coxtv.mobile.ui.theme.CoxColors.Accent)) { append("TV") }
+            },
+            style = style,
+            fontWeight = androidx.compose.ui.text.font.FontWeight.ExtraBold,
+            letterSpacing = androidx.compose.ui.unit.TextUnit(-0.04f, androidx.compose.ui.unit.TextUnitType.Em),
+        )
+    }
 }
 
 /** Picture-in-picture icon (not part of the core Material icon set). */

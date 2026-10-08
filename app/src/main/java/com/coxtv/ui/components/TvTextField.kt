@@ -70,7 +70,7 @@ fun TvTextField(
                 containerColor = CoxColors.PanelHi,
                 contentColor = CoxColors.Text,
                 focusedContainerColor = CoxColors.AccentDim,
-                focusedContentColor = Color.White,
+                focusedContentColor = CoxColors.Text,
             ),
             border = ClickableSurfaceDefaults.border(
                 focusedBorder = androidx.tv.material3.Border(

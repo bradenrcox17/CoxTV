@@ -44,7 +44,7 @@ fun UpdateDialog(updates: UpdateManager, activity: Activity) {
     when (s) {
         UpdateState.Checking -> {
             title = "Checking for updates…"
-            body = { LinearProgressIndicator(Modifier.fillMaxWidth()) }
+            body = { LinearProgressIndicator(Modifier.fillMaxWidth(), trackColor = com.coxtv.mobile.ui.theme.CoxColors.PanelHi) }
             dismiss = "Cancel" to updates::dismiss
         }
         UpdateState.UpToDate -> {
@@ -72,11 +72,11 @@ fun UpdateDialog(updates: UpdateManager, activity: Activity) {
             body = {
                 Column {
                     if (s.progress >= 0) {
-                        LinearProgressIndicator(progress = { s.progress }, modifier = Modifier.fillMaxWidth())
+                        LinearProgressIndicator(progress = { s.progress }, modifier = Modifier.fillMaxWidth(), trackColor = com.coxtv.mobile.ui.theme.CoxColors.PanelHi)
                         Spacer(Modifier.height(6.dp))
                         Text("${(s.progress * 100).toInt()}%")
                     } else {
-                        LinearProgressIndicator(Modifier.fillMaxWidth())
+                        LinearProgressIndicator(Modifier.fillMaxWidth(), trackColor = com.coxtv.mobile.ui.theme.CoxColors.PanelHi)
                     }
                 }
             }
