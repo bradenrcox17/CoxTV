@@ -1,6 +1,132 @@
 ' Duplicate channels and "Sports on now". Same rules as the Fire TV / phone apps
 ' (core/.../ChannelGroups.kt and Sports.kt) and the web player (coxstream.py).
 
+' ---------------------------------------------------------------- US channels
+
+' A US channel ("Sports on now" lists only these; search puts them first). The provider files
+' them under "USA | ..." groups, ESPN+ and Flo Sports included though their names don't say
+' USA. A group starting with another country's code ("CA | ...") is never US, whatever the name
+' says; otherwise names starting "USA:" / "US:" / "(US)" are, and so are ESPN+, ESPN Play and
+' Flo Sports unless the name starts with another country's code ("Arg: ESPN"). Same rule as the
+' stream server (is_us_channel) and the Android apps (ChannelGroups.isUs).
+function isUsChannel(name as string, group as string) as boolean
+    if m.usRules = invalid then
+        m.usRules = {
+            group: CreateObject("roRegex", "^\s*USA?\b", "i")
+            name: CreateObject("roRegex", "^\s*(USA?\s*[:|\-]|\(USA?\))", "i")
+            service: CreateObject("roRegex", "espn\s*\+|espn\s*play|flo\s*sports", "i")
+            country: CreateObject("roRegex", "^\s*\(?([A-Za-z]{2,4})\)?\s*[:|]", "")
+        }
+    end if
+    r = m.usRules
+    if r.group.IsMatch(group) then return true
+    if not usOrNoCountry(r.country.Match(group)) then return false
+    if r.name.IsMatch(name) then return true
+    if r.service.IsMatch(name + " " + group) then return usOrNoCountry(r.country.Match(name))
+    return false
+end function
+
+' ---------------------------------------------------------------- NFL / NBA / MLB / NHL
+' Every local station carrying one of these leagues' games would list it again, so their games
+' come from dedicated channels ("NFL: Tennessee Titans" in "USA | NFL Teams", "NFL 1: ..." in
+' "USA | NFL Game Pass") or national ones, never local stations ("USA | LOCAL - CBS"...).
+' Same rule as the stream server and the Android apps (Sports.kt).
+
+function isProLeague(league as string) as boolean
+    return league = "NFL" or league = "NBA" or league = "MLB" or league = "NHL"
+end function
+
+function isLocalGroup(group as string) as boolean
+    initProRules()
+    return m.proRules.local.IsMatch(group)
+end function
+
+' A league's own channel: team channels and Game Pass feeds.
+function isDedicatedChannel(name as string, group as string) as boolean
+    initProRules()
+    return m.proRules.dedicatedGroup.IsMatch(group) or m.proRules.dedicatedName.IsMatch(name)
+end function
+
+' "PIT vs. CBJ • ANA vs. WPG" whip-around feeds (the bullet sometimes arrives garbled as "â€¢").
+function isMultiGame(title as string) as boolean
+    return Instr(1, title, chr(8226)) > 0 or Instr(1, title, chr(226) + chr(8364) + chr(162)) > 0
+end function
+
+sub initProRules()
+    if m.proRules <> invalid then return
+    m.proRules = {
+        local: CreateObject("roRegex", "\blocal\b", "i")
+        dedicatedGroup: CreateObject("roRegex", "^\s*USA?\s*\|\s*(NFL|NBA|MLB|NHL)\s+(Teams|Game\s*Pass)\s*$", "i")
+        dedicatedName: CreateObject("roRegex", "^\s*(NFL|NBA|MLB|NHL)\s*\d*\s*:", "i")
+    }
+end sub
+
+' ---------------------------------------------------------------- search order
+' Same as the stream server (search_tier / name_match_rank) and the Android apps
+' (ChannelGroups.searchTier / nameMatchRank).
+
+' 0 US, 1 US Spanish-language (ESPN Deportes...), 2 other countries, 3 their Spanish ones.
+function searchTier(name as string, group as string) as integer
+    initSearchRules()
+    tier = 2
+    if isUsChannel(name, group) then tier = 0
+    if m.searchRules.spanish.IsMatch(name + " " + group) then tier = tier + 1
+    return tier
+end function
+
+' [rank, length] for a channel name vs a search, lower first: rank 0 the name (without its
+' "USA:" / "(US)" / "Tubi:" prefix and quality tags) is the search, 1 it starts with it, 2 a
+' word starts with it ("ESPN SEC Network"), 3 anywhere; event listings ("SEC Network +: LSU
+' vs. Kentucky") +4. Length: shorter names first.
+function nameMatchRank(name as string, query as string) as object
+    initSearchRules()
+    r = m.searchRules
+    key = r.notAlnum.ReplaceAll(LCase(query), "")
+    base = r.tags.ReplaceAll(r.prefix.Replace(name, ""), " ")
+    lower = LCase(base)
+    k = r.notAlnum.ReplaceAll(lower, "")
+    rank = 3
+    if k = key then
+        rank = 0
+    else if Left(k, Len(key)) = key then
+        rank = 1
+    else
+        words = []
+        for each w in r.splitter.Split(lower)
+            if w <> "" then words.Push(w)
+        end for
+        rest = ""
+        for i = words.Count() - 1 to 1 step -1
+            rest = words[i] + rest
+            if Left(rest, Len(key)) = key then
+                rank = 2
+                exit for
+            end if
+        end for
+    end if
+    if r.eventName.IsMatch(base) then rank = rank + 4
+    return [rank, Len(k)]
+end function
+
+sub initSearchRules()
+    if m.searchRules <> invalid then return
+    m.searchRules = {
+        spanish: CreateObject("roRegex", "deportes|espa\x{00f1}ol|espanol|spanish|\blatin|univision|telemundo|tudn|unimas|unim\x{00e1}s|galavision|galavisi\x{00f3}n", "i")
+        prefix: CreateObject("roRegex", "^\s*(?:\([^)]*\)\s*|[a-z0-9+]{1,6}\s*[:|]\s*)+", "i")
+        tags: CreateObject("roRegex", "\[[^\]]*\]|\b(?:hd|fhd|uhd|4k|sd|hevc|backup|bkp|raw|vip|\d{3,4}p)\b", "i")
+        eventName: CreateObject("roRegex", ":|\s(?:vs\.?|v|at|@)\s", "i")
+        notAlnum: CreateObject("roRegex", "[^a-z0-9]", "")
+        splitter: CreateObject("roRegex", "[^a-z0-9]+", "")
+    }
+end sub
+
+' A country-prefix match (from roRegex.Match) that is US, or no prefix at all.
+function usOrNoCountry(match as object) as boolean
+    if match.Count() < 2 then return true
+    code = UCase(match[1])
+    return code = "US" or code = "USA"
+end function
+
 ' ---------------------------------------------------------------- duplicate channels
 
 sub initGroupRules()

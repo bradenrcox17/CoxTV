@@ -137,6 +137,25 @@ object Sports {
         return name.replace(Regex("^\\(\\d+\\)\\s*"), "").replace(EVENT_DATE, "").trim()
     }
 
+    /**
+     * NFL, NBA, MLB and NHL games: every local station carrying one would list it again, so
+     * those leagues' games come from their dedicated channels ("NFL: Tennessee Titans" in
+     * "USA | NFL Teams", "NFL 1: ..." in "USA | NFL Game Pass") or national ones, never local
+     * stations ("USA | LOCAL - CBS"...). Same rule as the stream server and Roku (Groups.brs).
+     */
+    val PRO_LEAGUES = setOf("NFL", "NBA", "MLB", "NHL")
+    private val LOCAL_GROUP = Regex("""\blocal\b""", RegexOption.IGNORE_CASE)
+    private val DEDICATED_GROUP = Regex("""^\s*USA?\s*\|\s*(NFL|NBA|MLB|NHL)\s+(Teams|Game\s*Pass)\s*$""", RegexOption.IGNORE_CASE)
+    private val DEDICATED_NAME = Regex("""^\s*(NFL|NBA|MLB|NHL)\s*\d*\s*:""", RegexOption.IGNORE_CASE)
+
+    fun isLocal(group: String) = LOCAL_GROUP.containsMatchIn(group)
+
+    /** A league's own channel: team channels and Game Pass feeds. */
+    fun isDedicated(name: String, group: String) = DEDICATED_GROUP.containsMatchIn(group) || DEDICATED_NAME.containsMatchIn(name)
+
+    /** "PIT vs. CBJ • ANA vs. WPG" whip-around feeds (the bullet sometimes arrives garbled as "â€¢"). */
+    fun isMultiGame(title: String) = title.contains('•') || title.contains("â€¢")
+
     private val KEY_NOISE = Regex("\\([^)]*\\)|\\b(new|live|hd|fhd)\\b")
 
     /** Normalized title for folding the same game shown on several channels into one entry. */

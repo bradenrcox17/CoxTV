@@ -324,8 +324,9 @@ class TvRepository(
     private fun findGames(channels: List<Channel>, now: Map<String, ProgramEntity>): List<SportsGame> {
         val nowMs = System.currentTimeMillis()
         val seen = HashSet<String>()
-        val games = ArrayList<SportsGame>()
+        val found = ArrayList<Pair<Int, SportsGame>>()
         for (ch in channels) {
+            if (!ChannelGroups.isUs(ch.name, ch.groupName)) continue // Sports on now: US channels only
             val p = ch.epgId?.let { now[it] }
             val chText = ch.name + " " + ch.groupName
             val game = when {
@@ -334,8 +335,17 @@ class TvRepository(
                 p == null -> Sports.eventChannelTitle(ch.name, nowMs)?.let { SportsGame(ch, it, Sports.league(it, chText), 0L) }
                 else -> null
             } ?: continue
-            if (seen.add(Sports.gameKey(game.title))) games += game
+            if (Sports.isMultiGame(game.title)) continue // whip-around feeds: those games are listed on their own
+            var rank = 1
+            if (game.league in Sports.PRO_LEAGUES) {
+                if (Sports.isLocal(ch.groupName)) continue // NFL/NBA/MLB/NHL: never a local station's copy
+                if (Sports.isDedicated(ch.name, ch.groupName)) rank = 0
+            }
+            found += rank to game
         }
+        // A team / Game Pass channel is the one listed for its game (stable: channel order otherwise).
+        val games = ArrayList<SportsGame>()
+        for ((_, game) in found.sortedBy { it.first }) if (seen.add(Sports.gameKey(game.title))) games += game
         return games.sortedWith(compareBy({ Sports.LEAGUES.indexOf(it.league) }, { it.title.lowercase() }))
     }
 
@@ -442,21 +452,41 @@ class TvRepository(
             nameIndex!! to nowIndex!!
         }
         // Results point at the channel shown for each copy; one result per channel, none hidden.
+        // Every country matches, but US channels (ESPN+ and Flo included) come first, Spanish-
+        // language ones lower, and the best name matches first (ChannelGroups.searchTier /
+        // nameMatchRank), so look further than the 100 shown before cutting each list.
         val g = currentGrouping()
         val visible = g.visibleIds
-        val events = ArrayList<SearchResult>()
+        // Shows on now that are NFL/NBA/MLB/NHL games skip local stations and list the league's
+        // dedicated channels first (Sports.PRO_LEAGUES). Channel-name matches below are unchanged.
+        data class Event(val tier: Int, val dedicated: Int, val result: SearchResult)
+        val events = ArrayList<Event>()
         val eventSeen = HashSet<String>()
         for (i in airing.keys.indices) {
             if (airing.keys[i].contains(key)) {
                 val h = airing.hits[i]
                 val id = g.shownId[h.channelId] ?: h.channelId
-                if (h.endMs > now && id in visible && eventSeen.add(id)) events += SearchResult(id, h.title, h.channelName, h.groupName, h.endMs)
-                if (events.size >= 100) break
+                if (h.endMs > now && id in visible && id !in eventSeen) {
+                    var dedicated = 1
+                    var localGame = false
+                    if (Sports.league(h.title, h.channelName + " " + h.groupName) in Sports.PRO_LEAGUES) {
+                        localGame = Sports.isLocal(h.groupName)
+                        if (Sports.isDedicated(h.channelName, h.groupName)) dedicated = 0
+                    }
+                    if (!localGame) {
+                        eventSeen += id
+                        events += Event(ChannelGroups.searchTier(h.channelName, h.groupName), dedicated,
+                            SearchResult(id, h.title, h.channelName, h.groupName, h.endMs))
+                    }
+                }
+                if (events.size >= 400) break
             }
         }
-        events.sortBy { it.title.lowercase() }
-        val seen = events.mapTo(HashSet()) { it.channelId }
-        val channels = ArrayList<SearchResult>()
+        val eventResults = events.sortedWith(compareBy({ it.tier }, { it.dedicated }, { it.result.title.lowercase() }))
+            .take(100).map { it.result }
+        val seen = eventResults.mapTo(HashSet()) { it.channelId }
+        data class Ranked(val tier: Int, val rank: Int, val length: Int, val result: SearchResult)
+        val channels = ArrayList<Ranked>()
         for (i in names.keys.indices) {
             if (names.keys[i].contains(key)) {
                 val r = names.rows[i]
@@ -464,12 +494,18 @@ class TvRepository(
                 if (id in seen || id !in visible) continue
                 seen += id
                 val p = airing.byChannel[r.channelId]?.takeIf { it.endMs > now }
-                channels += if (p != null) SearchResult(id, p.title, r.channelName, r.groupName, p.endMs)
-                else SearchResult(id, r.channelName, r.groupName, r.groupName, 0L)
-                if (channels.size >= 100) break
+                val (rank, length) = ChannelGroups.nameMatchRank(r.channelName, query)
+                channels += Ranked(
+                    ChannelGroups.searchTier(r.channelName, r.groupName), rank, length,
+                    if (p != null) SearchResult(id, p.title, r.channelName, r.groupName, p.endMs)
+                    else SearchResult(id, r.channelName, r.groupName, r.groupName, 0L),
+                )
+                if (channels.size >= 1000) break
             }
         }
-        (events + channels).also {
+        // Stable sort: playlist order among equals.
+        val channelResults = channels.sortedWith(compareBy({ it.tier }, { it.rank }, { it.length })).take(100).map { it.result }
+        (eventResults + channelResults).also {
             Log.i(TAG, "search '$query': ${it.size} results in ${(System.nanoTime() - started) / 1_000_000} ms")
         }
     }

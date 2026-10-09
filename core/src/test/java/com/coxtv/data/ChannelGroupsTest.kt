@@ -173,4 +173,62 @@ class TeamsTest {
         assertTrue(Teams.isMine("Fodbold: Venskabskampe: Argentina - Benin", "Soccer", favs))
         assertFalse(Teams.isMine("NBA Basketball : Atlanta Hawks at Boston Celtics", "NBA", favs))
     }
+
+    // Same cases as the stream server (is_us_channel) and Roku (isUsChannel).
+    @Test fun usChannels() {
+        assertTrue(ChannelGroups.isUs("(146) Football: Florida St vs. Louisville", "USA | ESPN+"))
+        assertTrue(ChannelGroups.isUs("Flo Sports 14: flofootball: Cedarville vs Findlay", "USA |  Flo Sports"))
+        assertTrue(ChannelGroups.isUs("(US) ESPN PLAY 1 (D): NCAA Football", "ESPN Play"))
+        assertTrue(ChannelGroups.isUs("USA: ESPN FHD", "USA | Sports"))
+        assertTrue(ChannelGroups.isUs("NCAAF94: Tennessee vs Arkansas", "USA | NCAA"))
+        assertTrue(ChannelGroups.isUs("ME | Bangor FOX 22 WFVX", "USA | LOCAL - FOX"))
+        assertTrue(ChannelGroups.isUs("USA: The Cowboy Channel", "24/7 western"))
+        assertFalse(ChannelGroups.isUs("USA: SPORTSNET ONE HD", "CA | Sports"))
+        assertFalse(ChannelGroups.isUs("Arg: ESPN", "ARG | Argentina"))
+        assertFalse(ChannelGroups.isUs("Mx: ESPNEXTRA", "MX | Mexico"))
+        assertFalse(ChannelGroups.isUs("AU (KAYO) ESPN 1 (D)", "AU | Australia"))
+        assertFalse(ChannelGroups.isUs("NCAA Football: South Carolina vs. Florida", "CA | TSN+"))
+        assertFalse(ChannelGroups.isUs("ESPN", "ZA | DSTV Streams"))
+        assertFalse(ChannelGroups.isUs("UK: TNT Sports 1", "UK | Sports"))
+        assertFalse(ChannelGroups.isUs("ESPN8:TheOcho", "Samsung TV Plus"))
+    }
+
+    // Same order as the stream server (search_tier / name_match_rank) and Roku search().
+    @Test fun searchOrder() {
+        fun order(query: String, vararg channels: Pair<String, String>) = channels.sortedWith(
+            compareBy<Pair<String, String>>({ ChannelGroups.searchTier(it.first, it.second) },
+                { ChannelGroups.nameMatchRank(it.first, query).first }, { ChannelGroups.nameMatchRank(it.first, query).second }),
+        ).map { it.first }
+        assertEquals(
+            listOf("USA: ESPN FHD backup", "USA: ESPN2", "(US) ESPN PLAY 16 (D)", "(US) ESPN PLAY 1 (D): NCAA Football | Jeff Brohm Press Conference", "USA: ESPN Deportes", "Arg: ESPN"),
+            order("espn", "Arg: ESPN" to "ARG | Argentina", "USA: ESPN Deportes" to "USA | Latin",
+                "(US) ESPN PLAY 1 (D): NCAA Football | Jeff Brohm Press Conference" to "ESPN Play",
+                "(US) ESPN PLAY 16 (D)" to "ESPN Play", "USA: ESPN2" to "USA | Sports", "USA: ESPN FHD backup" to "USA | Sports"),
+        )
+        assertEquals(
+            listOf("USA: ESPN SEC Network", "(158) SEC Network +: LSU vs. #4 Kentucky"),
+            order("sec network", "(158) SEC Network +: LSU vs. #4 Kentucky" to "USA | ESPN+", "USA: ESPN SEC Network" to "USA | Sports"),
+        )
+        assertEquals(
+            listOf("USA: NFL Network", "NFL 3:"),
+            order("nfl", "NFL 3:" to "USA | NFL Game Pass", "USA: NFL Network" to "USA | Sports"),
+        )
+    }
+
+    // NFL/NBA/MLB/NHL games come from dedicated channels, never local stations (same as the server and Roku).
+    @Test fun proLeagueChannels() {
+        assertTrue(Sports.isDedicated("NFL: Tennessee Titans", "USA | NFL Teams"))
+        assertTrue(Sports.isDedicated("NHL: ANAHEIM DUCKS", "USA | NHL Teams"))
+        assertTrue(Sports.isDedicated("NFL 1: Tampa Bay Buccaneers vs Dallas Cowboys 8:15 PM", "USA | NFL Game Pass"))
+        assertTrue(Sports.isDedicated("USA: NFL Redzone FHD", "USA | NFL Game Pass"))
+        assertFalse(Sports.isDedicated("USA: NFL Network", "USA | Sports"))
+        assertFalse(Sports.isDedicated("TN | Nashville FOX 17 WZTV", "USA | LOCAL - FOX"))
+        assertTrue(Sports.isLocal("USA | LOCAL - FOX"))
+        assertTrue(Sports.isLocal("USA | LOCAL - Telemundo & Univision"))
+        assertFalse(Sports.isLocal("USA | Sports"))
+        assertFalse(Sports.isLocal("USA | NFL Teams"))
+        assertTrue(Sports.isMultiGame("NHL: PIT vs. CBJ • ANA vs. WPG"))
+        assertTrue(Sports.isMultiGame("NHL: PIT vs. CBJ â€¢ ANA vs. WPG"))
+        assertFalse(Sports.isMultiGame("NHL Hockey : Anaheim Ducks at Winnipeg Jets"))
+    }
 }

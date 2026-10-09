@@ -904,49 +904,66 @@ function sportsList() as object
     ensureNowIndex(now)
     initSportsRules()
     pl = m.pl
-    games = []
-    seen = {}
-    seen.SetModeCaseSensitive()
+    ' Candidates in two passes: NFL/NBA/MLB/NHL games on their dedicated channels first, so a
+    ' team / Game Pass channel is the one listed; then everything else (channel order).
+    preferred = []
+    rest = []
     idx = m.nowIdx
     if idx.titles <> invalid then
         for e = 0 to idx.titles.Count() - 1
             members = pl.tvgIndex[idx.tvgs[e]]
             if members <> invalid and idx.ends[e] > now then
                 s = pl.shown[members[0]]
-                if not hidden.DoesExist(s.ToStr()) then
+                if not hidden.DoesExist(s.ToStr()) and isUsChannel(pl.names[s], pl.groupNames[pl.grp[s]]) then
                     title = idx.titles[e]
                     chText = pl.names[s] + " " + pl.groupNames[pl.grp[s]]
-                    if isGame(title, chText) then
-                        gk = gameKey(title)
-                        if not seen.DoesExist(gk) then
-                            seen[gk] = true
-                            games.Push(newGame(s, title, leagueOf(title, chText), idx.ends[e]))
-                        end if
-                    end if
+                    if isGame(title, chText) then addSportsCandidate(preferred, rest, s, title, leagueOf(title, chText), idx.ends[e])
                 end if
             end if
         end for
     end if
     if pl.events <> invalid then
         for each s in pl.events
-            if not hidden.DoesExist(s.ToStr()) and currentProgram(pl.tvg[s], now) = invalid then
+            if not hidden.DoesExist(s.ToStr()) and currentProgram(pl.tvg[s], now) = invalid and isUsChannel(pl.names[s], pl.groupNames[pl.grp[s]]) then
                 title = eventChannelTitle(pl.names[s], now)
-                if title <> "" then
-                    gk = gameKey(title)
-                    if not seen.DoesExist(gk) then
-                        seen[gk] = true
-                        games.Push(newGame(s, title, leagueOf(title, pl.names[s] + " " + pl.groupNames[pl.grp[s]]), 0))
-                    end if
-                end if
+                if title <> "" then addSportsCandidate(preferred, rest, s, title, leagueOf(title, pl.names[s] + " " + pl.groupNames[pl.grp[s]]), 0)
             end if
         end for
     end if
+    games = []
+    seen = {}
+    seen.SetModeCaseSensitive()
+    preferred.Append(rest)
+    for each c in preferred
+        gk = gameKey(c.title)
+        if not seen.DoesExist(gk) then
+            seen[gk] = true
+            games.Push(newGame(c.s, c.title, c.league, c.endTime))
+        end if
+    end for
     games.SortBy("sort")
     m.sportsCache = games
     m.sportsUntil = m.nowIdxUntil
     if m.sportsUntil > now + 60 then m.sportsUntil = now + 60
     return games
 end function
+
+' A Sports on now candidate: whip-around feeds and local stations' NFL/NBA/MLB/NHL games are
+' left out; those leagues' games on their dedicated channels go in [preferred].
+sub addSportsCandidate(preferred as object, rest as object, s as integer, title as string, league as string, endTime as integer)
+    if isMultiGame(title) then return
+    pl = m.pl
+    c = { s: s, title: title, league: league, endTime: endTime }
+    if isProLeague(league) then
+        group = pl.groupNames[pl.grp[s]]
+        if isLocalGroup(group) then return
+        if isDedicatedChannel(pl.names[s], group) then
+            preferred.Push(c)
+            return
+        end if
+    end if
+    rest.Push(c)
+end sub
 
 function newGame(i as integer, title as string, league as string, endTime as integer) as object
     rank = 99
@@ -1104,7 +1121,7 @@ function search(query as dynamic) as object
     idx = m.nowIdx
     if idx.offs <> invalid and idx.offs.Count() > 0 then
         p = Instr(1, idx.blob, q)
-        while p > 0 and events.Count() < 100
+        while p > 0 and events.Count() < 400
             e = entryAt(idx.offs, p)
             members = pl.tvgIndex[idx.tvgs[e]]
             if members <> invalid then
@@ -1112,8 +1129,17 @@ function search(query as dynamic) as object
                 for each i in members
                     s = pl.shown[i]
                     if not seen.DoesExist(pl.keys[s]) and not hidden.DoesExist(s.ToStr()) then
-                        events.Push({ title: idx.titles[e], channel: pl.names[s], key: pl.keys[s], group: pl.groupNames[pl.grp[s]], endTime: idx.ends[e] })
-                        seen[pl.keys[s]] = true
+                        grp = pl.groupNames[pl.grp[s]]
+                        dedicated = "1"
+                        localGame = false
+                        if isProLeague(leagueOf(idx.titles[e], pl.names[s] + " " + grp)) then
+                            localGame = isLocalGroup(grp)
+                            if isDedicatedChannel(pl.names[s], grp) then dedicated = "0"
+                        end if
+                        if not localGame then ' a local station's NFL/NBA/MLB/NHL game: its name can still match below
+                            events.Push({ title: idx.titles[e], channel: pl.names[s], key: pl.keys[s], group: grp, endTime: idx.ends[e], sort: searchTier(pl.names[s], grp).ToStr() + dedicated + LCase(idx.titles[e]) })
+                            seen[pl.keys[s]] = true
+                        end if
                     end if
                 end for
             end if
@@ -1124,23 +1150,28 @@ function search(query as dynamic) as object
                 p = 0
             end if
         end while
-        events.SortBy("title")
+        events.SortBy("sort")
+        events = firstN(events, 100)
     end if
 
     offs = pl.nameOffs
     if offs <> invalid and offs.Count() > 0 then
         p = Instr(1, pl.nameBlob, q)
-        while p > 0 and channels.Count() < 100
+        while p > 0 and channels.Count() < 1000
             hit = entryAt(offs, p)
             i = pl.shown[hit]
             k = pl.keys[i]
             if not seen.DoesExist(k) and not hidden.DoesExist(i.ToStr()) then
                 seen[k] = true
                 cp = currentProgram(pl.tvg[i], now)
+                grp = pl.groupNames[pl.grp[i]]
+                ' US first, Spanish-language lower, best name matches first, then playlist order.
+                nr = nameMatchRank(pl.names[i], query)
+                order = searchTier(pl.names[i], grp).ToStr() + nr[0].ToStr() + Right("000" + nr[1].ToStr(), 3) + Right("00000" + channels.Count().ToStr(), 5)
                 if cp <> invalid then
-                    channels.Push({ title: cp[2], channel: pl.names[i], key: k, group: pl.groupNames[pl.grp[i]], endTime: cp[1] })
+                    channels.Push({ title: cp[2], channel: pl.names[i], key: k, group: grp, endTime: cp[1], sort: order })
                 else
-                    channels.Push({ title: pl.names[i], channel: pl.groupNames[pl.grp[i]], key: k, group: pl.groupNames[pl.grp[i]], endTime: 0 })
+                    channels.Push({ title: pl.names[i], channel: grp, key: k, group: grp, endTime: 0, sort: order })
                 end if
             end if
             if hit + 1 < offs.Count() then
@@ -1150,8 +1181,18 @@ function search(query as dynamic) as object
             end if
         end while
     end if
-    events.Append(channels)
+    channels.SortBy("sort")
+    events.Append(firstN(channels, 100))
     return events
+end function
+
+function firstN(items as object, n as integer) as object
+    if items.Count() <= n then return items
+    out = []
+    for i = 0 to n - 1
+        out.Push(items[i])
+    end for
+    return out
 end function
 
 ' Search key: lower-case with spaces and common punctuation removed, so typing on a

@@ -19,6 +19,65 @@ object ChannelGroups {
     private val BRACKETS = Regex("[\\[(]([^\\])]*)[\\])]")
     private const val PUNCT = " -_.,:;!?/|'`\"~#@*"
 
+    private val US_GROUP = Regex("""^\s*USA?\b""", RegexOption.IGNORE_CASE)
+    private val US_NAME = Regex("""^\s*(USA?\s*[:|\-]|\(USA?\))""", RegexOption.IGNORE_CASE)
+    private val US_SERVICE = Regex("""espn\s*\+|espn\s*play|flo\s*sports""", RegexOption.IGNORE_CASE)
+    private val COUNTRY_PREFIX = Regex("""^\s*\(?([A-Za-z]{2,4})\)?\s*[:|]""")
+
+    /**
+     * A US channel ("Sports on now" lists only these; search puts them first). The provider
+     * files them under "USA | ..." groups, ESPN+ and Flo Sports included though their names
+     * don't say USA. A group starting with another country's code ("CA | ...") is never US,
+     * whatever the name says; otherwise names starting "USA:" / "US:" / "(US)" are, and so are
+     * ESPN+, ESPN Play and Flo Sports unless the name starts with another country's code
+     * ("Arg: ESPN"). Same rule as the stream server (is_us_channel) and Roku (isUsChannel).
+     */
+    fun isUs(name: String, group: String): Boolean {
+        if (US_GROUP.containsMatchIn(group)) return true
+        COUNTRY_PREFIX.find(group)?.let { if (it.groupValues[1].uppercase() !in US_CODES) return false }
+        if (US_NAME.containsMatchIn(name)) return true
+        if (US_SERVICE.containsMatchIn("$name $group")) {
+            COUNTRY_PREFIX.find(name)?.let { if (it.groupValues[1].uppercase() !in US_CODES) return false }
+            return true
+        }
+        return false
+    }
+
+    private val US_CODES = setOf("US", "USA")
+
+    // Search order (same as the stream server's search_tier / name_match_rank and Roku search()).
+    private val SPANISH = Regex("""deportes|espa[nñ]ol|spanish|\blatin|univision|telemundo|tudn|unim[aá]s|galavisi[oó]n""", RegexOption.IGNORE_CASE)
+    private val SEARCH_PREFIX = Regex("""^\s*(?:\([^)]*\)\s*|[a-z0-9+]{1,6}\s*[:|]\s*)+""", RegexOption.IGNORE_CASE)
+    private val SEARCH_TAGS = Regex("""\[[^\]]*\]|\b(?:hd|fhd|uhd|4k|sd|hevc|backup|bkp|raw|vip|\d{3,4}p)\b""", RegexOption.IGNORE_CASE)
+    private val EVENT_NAME = Regex(""":|\s(?:vs\.?|v|at|@)\s""", RegexOption.IGNORE_CASE)
+    private val NOT_ALNUM = Regex("[^a-z0-9]")
+    private val WORD = Regex("[a-z0-9]+")
+
+    /** Search tier: US channels, then US Spanish-language ones (ESPN Deportes...), then other countries. */
+    fun searchTier(name: String, group: String): Int =
+        (if (isUs(name, group)) 0 else 2) + (if (SPANISH.containsMatchIn("$name $group")) 1 else 0)
+
+    /**
+     * How well a channel name matches a search, lower first: 0 the name (without its "USA:" /
+     * "(US)" / "Tubi:" prefix and quality tags) is the search, 1 it starts with it, 2 a word
+     * starts with it ("ESPN SEC Network"), 3 anywhere; event listings ("SEC Network +: LSU vs.
+     * Kentucky") +4. Second value: name length (shorter first).
+     */
+    fun nameMatchRank(name: String, query: String): Pair<Int, Int> {
+        val key = query.lowercase().replace(NOT_ALNUM, "")
+        val base = name.replace(SEARCH_PREFIX, "").replace(SEARCH_TAGS, " ")
+        val k = base.lowercase().replace(NOT_ALNUM, "")
+        val words = WORD.findAll(base.lowercase()).map { it.value }.toList()
+        var rank = when {
+            k == key -> 0
+            k.startsWith(key) -> 1
+            (1 until words.size).any { words.subList(it, words.size).joinToString("").startsWith(key) } -> 2
+            else -> 3
+        }
+        if (EVENT_NAME.containsMatchIn(base)) rank += 4
+        return rank to k.length
+    }
+
     /** Grouping key for a channel name, or null when nothing is left to compare. */
     fun key(name: String): String? {
         var n = name.lowercase().trim()
