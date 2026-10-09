@@ -95,6 +95,8 @@ sub handleRequest(req as dynamic)
         result = redeemSetupCode(req.code)
     else if t = "serverKey" then
         result = { key: serverKey(req.id) }
+    else if t = "sameGame" then
+        result = sameGame(req.key, req.url)
     else if t = "cfbTeams" then
         result = { teams: cfbTeams(req.index) }
     else if t = "teamCatalog" then

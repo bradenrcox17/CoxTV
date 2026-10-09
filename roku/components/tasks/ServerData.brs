@@ -4,6 +4,11 @@
 
 ' GET /d/<token><path> as parsed JSON, or invalid (not linked, offline, error).
 function deviceGet(path as string) as dynamic
+    return deviceGetWithin(path, 10000)
+end function
+
+' deviceGet that gives up after ms milliseconds.
+function deviceGetWithin(path as string, ms as integer) as dynamic
     token = regRead("deviceToken")
     if token = "" then return invalid
     ut = CreateObject("roUrlTransfer")
@@ -14,13 +19,34 @@ function deviceGet(path as string) as dynamic
     ut.InitClientCertificates()
     ut.EnableEncodings(true)
     if not ut.AsyncGetToString() then return invalid
-    msg = wait(10000, port)
+    msg = wait(ms, port)
     if msg = invalid then
         ut.AsyncCancel()
         return invalid
     end if
     if msg.GetResponseCode() <> 200 then return invalid
     return ParseJson(msg.GetString())
+end function
+
+' Is the game on this channel already streaming on another channel through the stream server
+' (SEC Network and NCAAF94 showing the same game)? Asked before a channel starts, so it gives
+' up after 2 seconds. Returns { key, row: the other channel as a list row, full: every stream
+' in use }, or just { key } when not.
+function sameGame(key as string, url as string) as object
+    out = { key: key }
+    if not useStreamServer() then return out
+    sid = serverIdOf(url)
+    if sid = "" then return out
+    got = deviceGetWithin("/same-game?cid=" + sid, 2000)
+    if got = invalid or type(got.same) <> "roAssociativeArray" or got.same.id = invalid then return out
+    otherKey = serverKey(got.same.id)
+    if otherKey = "" or otherKey = key then return out
+    pl = m.pl
+    i = pl.keyIndex[otherKey]
+    if i = invalid then return out
+    out.row = [pl.keys[i], pl.names[i], pl.urls[i], pl.logos[i], pl.groupNames[pl.grp[i]], pl.nums[i], false, "", 0, 0]
+    out.full = (got.full = true)
+    return out
 end function
 
 ' PUT /d/<token><path> with a JSON body; returns the parsed reply or invalid.

@@ -139,6 +139,14 @@ fun PlayerScreen(
     var sourceIndex by remember { mutableIntStateOf(0) }
     var sourcePlayed by remember { mutableStateOf(false) }
     val rootFocus = remember { FocusRequester() }
+    // Same game already streaming on another channel: ask (channel picked -> channel playing it),
+    // or say so when every stream was in use and we joined it. A channel in sameGameOk plays
+    // without asking (chosen from the prompt).
+    var sameGamePrompt by remember { mutableStateOf<Pair<Channel, Channel>?>(null) }
+    var sameGameOk by remember { mutableStateOf<String?>(null) }
+    var sameGameNotice by remember { mutableStateOf<String?>(null) }
+    var sameGameNonce by remember { mutableIntStateOf(0) }
+    val joinFocus = remember { FocusRequester() }
 
     val player = remember { buildLivePlayer(context) }
     DisposableEffect(player) {
@@ -241,8 +249,34 @@ fun PlayerScreen(
         }
     }
 
-    LaunchedEffect(current?.id) {
+    // Joins [other], the channel already showing the game; "previous channel" stays the one
+    // watched before the channel that was skipped.
+    fun joinSameGame(other: Channel) {
+        val cameFrom = previousId
+        sameGamePrompt = null
+        sameGameOk = other.id
+        tune(other)
+        previousId = cameFrom
+    }
+
+    LaunchedEffect(current?.id, sameGameNonce) {
         val ch = current
+        sameGamePrompt = null
+        if (ch != null && ch.id != sameGameOk) {
+            sources = emptyList()
+            val same = container.link.sameGame(ch)
+            val other = same?.let { repo.channelForServerId(it.serverId) }?.takeIf { it.id != ch.id }
+            if (same != null && other != null) {
+                if (same.full) {
+                    sameGameNotice = "Every stream is in use, so you're watching this game on ${other.name}."
+                    joinSameGame(other)
+                } else {
+                    showInfo = false
+                    sameGamePrompt = ch to other
+                }
+                return@LaunchedEffect
+            }
+        }
         sources = if (ch == null) emptyList() else {
             listOfNotNull(container.link.streamUrl(ch)?.let { ch to it }) + repo.sourcesFor(ch).map { it to it.streamUrl }
         }
@@ -289,6 +323,33 @@ fun PlayerScreen(
         container.settings.setLastWatched(channel.id, category)
     }
 
+    LaunchedEffect(sameGamePrompt) {
+        if (sameGamePrompt != null) {
+            // The buttons need a frame or two to exist; keep asking until Join has focus.
+            repeat(10) {
+                withFrameNanos { }
+                if (runCatching { joinFocus.requestFocus() }.isSuccess) return@LaunchedEffect
+                delay(50)
+            }
+        } else {
+            runCatching { rootFocus.requestFocus() }
+        }
+    }
+
+    LaunchedEffect(sameGameNotice) {
+        if (sameGameNotice != null) {
+            delay(6_000)
+            sameGameNotice = null
+        }
+    }
+
+    // Back on the "already playing" question watches the channel that was picked.
+    BackHandler(enabled = sameGamePrompt != null) {
+        sameGamePrompt?.first?.let { sameGameOk = it.id }
+        sameGamePrompt = null
+        sameGameNonce++
+    }
+
     LaunchedEffect(showInfo, infoNonce) {
         if (showInfo) {
             delay(5_000)
@@ -298,7 +359,7 @@ fun PlayerScreen(
 
     // A tapped info-bar button takes focus; give it back to the player when the bar hides.
     LaunchedEffect(showInfo) {
-        if (!showInfo && !showMiniGuide) runCatching { rootFocus.requestFocus() }
+        if (!showInfo && !showMiniGuide && sameGamePrompt == null) runCatching { rootFocus.requestFocus() }
     }
 
     LaunchedEffect(digits) {
@@ -310,7 +371,7 @@ fun PlayerScreen(
     }
 
     LaunchedEffect(showMiniGuide) {
-        if (!showMiniGuide) {
+        if (!showMiniGuide && sameGamePrompt == null) {
             withFrameNanos { }
             runCatching { rootFocus.requestFocus() }
         }
@@ -378,7 +439,7 @@ fun PlayerScreen(
                 )
             }
             .onKeyEvent { ev ->
-                if (ev.type != KeyEventType.KeyDown || showMiniGuide) return@onKeyEvent false
+                if (ev.type != KeyEventType.KeyDown || showMiniGuide || sameGamePrompt != null) return@onKeyEvent false
                 when (val code = ev.nativeKeyEvent.keyCode) {
                     KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_CHANNEL_UP, KeyEvent.KEYCODE_PAGE_UP -> { zap(+1); true }
                     KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_CHANNEL_DOWN, KeyEvent.KEYCODE_PAGE_DOWN -> { zap(-1); true }
@@ -428,7 +489,7 @@ fun PlayerScreen(
         // Hide the previous channel's frozen frame until the new stream renders.
         if (awaitingFirstFrame) Box(Modifier.fillMaxSize().background(Color.Black))
 
-        if ((buffering || awaitingFirstFrame) && error == null) {
+        if ((buffering || awaitingFirstFrame) && error == null && sameGamePrompt == null) {
             Text(
                 "Loading…",
                 modifier = Modifier.align(Alignment.Center).background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(8.dp)).padding(horizontal = 18.dp, vertical = 10.dp),
@@ -453,6 +514,41 @@ fun PlayerScreen(
                     color = CoxColors.TextDim,
                 )
             }
+        }
+
+        sameGamePrompt?.let { (picked, other) ->
+            Column(
+                Modifier.align(Alignment.Center).width(560.dp)
+                    .background(CoxColors.Panel, RoundedCornerShape(16.dp)).padding(28.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text("This game is already on ${other.name}", style = MaterialTheme.typography.titleLarge)
+                Text(
+                    "Someone is watching it there. Join them to save a stream, or watch this channel anyway.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = CoxColors.TextDim,
+                )
+                Spacer(Modifier.height(6.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    CoxButton("Join them", onClick = { joinSameGame(other) }, primary = true,
+                        modifier = Modifier.focusRequester(joinFocus))
+                    CoxButton("Watch this channel", onClick = {
+                        sameGameOk = picked.id
+                        sameGamePrompt = null
+                        sameGameNonce++
+                    })
+                }
+            }
+        }
+
+        sameGameNotice?.let {
+            Text(
+                it,
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = 32.dp)
+                    .background(Color.Black.copy(alpha = 0.75f), RoundedCornerShape(10.dp))
+                    .padding(horizontal = 20.dp, vertical = 10.dp),
+                style = MaterialTheme.typography.bodyLarge,
+            )
         }
 
         if (digits.isNotEmpty()) {

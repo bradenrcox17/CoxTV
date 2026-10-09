@@ -53,6 +53,33 @@ class DeviceLink(private val settings: SettingsStore, http: OkHttpClient) {
         return "${SetupCodes.SERVER}/d/$token/live/$id.m3u8"
     }
 
+    /** The same game already streaming on another channel ([serverId], [channel]); [full] when every stream is in use. */
+    data class SameGame(val serverId: String, val channel: String, val full: Boolean)
+
+    /** Quick questions (asked before tuning) that must never hold up a channel. */
+    private val quick = http.newBuilder().callTimeout(2, TimeUnit.SECONDS).build()
+
+    /**
+     * Is the game on [channel] already playing on another channel through the stream server
+     * (SEC Network and NCAAF94 showing the same game)? Null when not, when not playing through
+     * the server, or when the server doesn't answer in time.
+     */
+    suspend fun sameGame(channel: Channel): SameGame? {
+        val token = token() ?: return null
+        if (!settings.useServer.first()) return null
+        val id = serverId(channel.streamUrl) ?: return null
+        val json = withContext(Dispatchers.IO) {
+            runCatching {
+                quick.newCall(Request.Builder().url("${SetupCodes.SERVER}/d/$token/same-game?cid=$id").build()).execute().use { resp ->
+                    if (resp.isSuccessful) JSONObject(resp.body.string()) else null
+                }
+            }.getOrNull()
+        } ?: return null
+        val same = json.optJSONObject("same") ?: return null
+        val otherId = same.optString("id").takeIf { it.isNotBlank() && it != id } ?: return null
+        return SameGame(otherId, same.optString("channel"), json.optBoolean("full"))
+    }
+
     /** Tells the server this device stopped watching, so the channel's connection frees up sooner. */
     suspend fun leave() {
         val token = token() ?: return

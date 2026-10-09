@@ -30,6 +30,14 @@ sub init()
     m.badgeText = m.top.findNode("badgeText")
     m.badgeTimer = m.top.findNode("badgeTimer")
     m.recentTimer = m.top.findNode("recentTimer")
+    m.samePrompt = m.top.findNode("samePrompt")
+    m.sameTitle = m.top.findNode("sameTitle")
+    m.sameBody = m.top.findNode("sameBody")
+    m.sameList = m.top.findNode("sameList")
+    m.sameNotice = m.top.findNode("sameNotice")
+    m.sameNoticeText = m.top.findNode("sameNoticeText")
+    m.sameTimer = m.top.findNode("sameTimer")
+    m.sameNoticeTimer = m.top.findNode("sameNoticeTimer")
 
     m.video.observeField("state", "onVideoState")
     m.miniList.observeField("itemSelected", "onMiniSelected")
@@ -41,6 +49,9 @@ sub init()
     m.stallTimer.observeField("fire", "onStall")
     m.badgeTimer.observeField("fire", "showBadgeNow")
     m.recentTimer.observeField("fire", "onRecentTimer")
+    m.sameTimer.observeField("fire", "onSameTimeout")
+    m.sameNoticeTimer.observeField("fire", "hideSameNotice")
+    m.sameList.observeField("itemSelected", "onSameChoice")
     m.top.observeField("params", "onParams")
     m.top.observeField("active", "onActive")
     m.top.observeField("closed", "onClosed")
@@ -63,6 +74,9 @@ sub init()
     m.nowNextReply = invalid
     m.category = "__all__"
     m.wantKey = ""
+    m.sameReply = invalid
+    m.sameOk = ""         ' channel key that plays without asking (chosen on the prompt)
+    m.sameOther = invalid ' the other channel's list row while the prompt is up
     m.clockTimer.control = "start"
     ' Lets the data service hold heavy guide work until this stream has settled.
     m.global.bus.playerOpen = true
@@ -174,6 +188,22 @@ sub startPlayback()
     ch = m.channel
     if ch = invalid then return
     if ch.id = m.playingKey and m.video.state = "playing" then return
+    hideSamePrompt()
+    ' Through the stream server: is this game already streaming on another channel?
+    if ch.id <> m.sameOk and useStreamServer() and serverIdOf(ch.url) <> "" then
+        m.sameReply = svcCall({ type: "sameGame", key: ch.id, url: ch.url }, "onSameGame")
+        m.sameTimer.control = "stop"
+        m.sameTimer.control = "start"
+        return ' continues in onSameGame (or onSameTimeout)
+    end if
+    beginPlayback()
+end sub
+
+sub beginPlayback()
+    ch = m.channel
+    if ch = invalid then return
+    m.sameReply = invalid
+    m.sameTimer.control = "stop"
     m.playingKey = ch.id
     ' Through the stream server first when linked (TVs on the same channel share one provider
     ' connection), then the provider link directly if the server can't play it.
@@ -456,6 +486,11 @@ end sub
 function onKeyEvent(key as string, press as boolean) as boolean
     if not press then return false
 
+    if m.samePrompt.visible then
+        if key = "back" then watchPickedAnyway() ' Back watches the channel that was picked
+        return true
+    end if
+
     if m.mini.visible then
         if key = "back" or key = "right" or key = "left" then
             closeMini()
@@ -500,6 +535,104 @@ function onKeyEvent(key as string, press as boolean) as boolean
     end if
     return true
 end function
+
+' ---------------------------------------------------------------- same game elsewhere
+
+sub onSameGame(event as object)
+    if m.sameReply = invalid or not event.getRoSGNode().isSameNode(m.sameReply) then return
+    m.sameReply = invalid
+    m.sameTimer.control = "stop"
+    data = event.getData()
+    if m.channel = invalid or data.key <> m.channel.id then return
+    if type(data.row) <> "roArray" then
+        beginPlayback()
+        return
+    end if
+    if data.full = true then
+        showSameNotice("Every stream is in use, so you're watching this game on " + data.row[1] + ".")
+        joinSameGame(data.row)
+    else
+        showSamePrompt(data.row)
+    end if
+end sub
+
+' The data service was busy or the server slow: never hold the channel up for it.
+sub onSameTimeout()
+    if m.sameReply = invalid then return
+    m.sameReply = invalid
+    beginPlayback()
+end sub
+
+sub showSamePrompt(row as object)
+    m.sameOther = row
+    m.loading.visible = false
+    m.sameTitle.text = "This game is already on " + row[1]
+    m.sameBody.text = "Someone is watching it there. Join them to save a stream, or watch this channel anyway."
+    items = CreateObject("roSGNode", "ContentNode")
+    items.CreateChild("ContentNode").title = "Join them"
+    items.CreateChild("ContentNode").title = "Watch this channel"
+    m.sameList.content = items
+    m.sameList.jumpToItem = 0
+    hideInfo()
+    m.samePrompt.visible = true
+    m.sameList.setFocus(true)
+end sub
+
+sub hideSamePrompt()
+    if not m.samePrompt.visible then return
+    m.samePrompt.visible = false
+    m.sameOther = invalid
+    m.top.setFocus(true)
+end sub
+
+sub onSameChoice()
+    row = m.sameOther
+    if row = invalid then return
+    if m.sameList.itemSelected = 0 then
+        joinSameGame(row)
+    else
+        watchPickedAnyway()
+    end if
+end sub
+
+sub watchPickedAnyway()
+    hideSamePrompt()
+    if m.channel = invalid then return
+    m.sameOk = m.channel.id
+    startPlayback()
+end sub
+
+' Plays the other channel (adding it to this list if it isn't in it). "Previous channel"
+' stays the one watched before the channel that was skipped.
+sub joinSameGame(row as object)
+    hideSamePrompt()
+    idx = -1
+    for i = 0 to m.content.getChildCount() - 1
+        if m.content.getChild(i).id = row[0] then
+            idx = i
+            exit for
+        end if
+    end for
+    if idx < 0 then
+        appendContentRows(m.content, [row], 0, 1)
+        idx = m.content.getChildCount() - 1
+    end if
+    cameFrom = m.prevIndex
+    m.sameOk = row[0]
+    tune(idx, true)
+    m.prevIndex = cameFrom
+end sub
+
+sub showSameNotice(text as string)
+    m.sameNoticeText.text = text
+    m.sameNotice.visible = true
+    m.sameNoticeTimer.control = "stop"
+    m.sameNoticeTimer.control = "start"
+end sub
+
+sub hideSameNotice()
+    m.sameNotice.visible = false
+end sub
 
 ' ---------------------------------------------------------------- copies of a channel
 

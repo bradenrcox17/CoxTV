@@ -43,6 +43,20 @@
              text="Up/Down: channel    Left: mini guide    OK: hide    *: favorite    Replay: previous channel"><Font role="font" uri="pkg:/fonts/geist_regular.ttf" size="24" /></Label>
     </Group>
 
+    <!-- The same game is already streaming on another channel: join it, or watch this one. -->
+    <Group id="samePrompt" visible="false">
+      <Rectangle translation="[460,330]" width="1000" height="420" color="0x141416F2" />
+      <Label id="sameTitle" translation="[510,370]" width="900" wrap="true" maxLines="2" color="0xFFFFFFFF"><Font role="font" uri="pkg:/fonts/geist_bold.ttf" size="40" /></Label>
+      <Label id="sameBody" translation="[510,480]" width="900" wrap="true" maxLines="2" color="0xA3A3A8FF"><Font role="font" uri="pkg:/fonts/geist_regular.ttf" size="28" /></Label>
+      <LabelList id="sameList" translation="[510,575]" itemSize="[900,64]" itemSpacing="[0,8]" numRows="2"
+                 color="0xEDEDEDFF" focusedColor="0x0A0A0BFF" focusBitmapBlendColor="0xFF8200FF"
+                 font="font:SmallBoldSystemFont" focusedFont="font:SmallBoldSystemFont" vertFocusAnimationStyle="floatingFocus" />
+    </Group>
+    <Group id="sameNotice" visible="false">
+      <Rectangle translation="[360,50]" width="1200" height="72" color="0x000000C0" />
+      <Label id="sameNoticeText" translation="[360,50]" width="1200" height="72" horizAlign="center" vertAlign="center" color="0xFFFFFFFF"><Font role="font" uri="pkg:/fonts/geist_semibold.ttf" size="28" /></Label>
+    </Group>
+
     <Group id="mini" visible="false">
       <Rectangle width="680" height="1080" color="0x000000E6" />
       <Label id="miniTitle" translation="[40,40]" width="600" color="0xFFFFFFFF"><Font role="font" uri="pkg:/fonts/geist_semibold.ttf" size="34" /></Label>
@@ -56,6 +70,8 @@
     <Timer id="stallTimer" duration="12" repeat="false" />
     <Timer id="badgeTimer" duration="1.5" repeat="false" />
     <Timer id="recentTimer" duration="5" repeat="false" />
+    <Timer id="sameTimer" duration="2.5" repeat="false" />
+    <Timer id="sameNoticeTimer" duration="6" repeat="false" />
     <Timer id="clockTimer" duration="15" repeat="true" />
   </children>
 </component>
