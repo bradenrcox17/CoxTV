@@ -23,7 +23,7 @@ sub init()
     if regRead("m3uUrl") = "" then
         pushScreen("SetupScreen", { firstRun: true })
     else
-        startLoad(true)
+        startLoad(false) ' always open on the home screen (not the last channel)
         pushScreen("HomeScreen", {})
     end if
 end sub

@@ -97,6 +97,7 @@ fun PlayerScreen(
     channelId: String,
     category: String,
     onOpenGuide: (category: String) -> Unit,
+    onBackground: () -> Unit = {},
 ) {
     val repo = container.repository
     val context = LocalContext.current
@@ -186,6 +187,23 @@ fun PlayerScreen(
             player.release()
             container.appScope.launch { container.link.leave() } // frees the channel on the server sooner
         }
+    }
+
+    // Leaving the app (Home, TV off, another input): stop the stream right away (no audio keeps
+    // playing in the background), give the channel back to the stream server, and close the
+    // player so the app reopens on the home screen.
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_STOP) {
+                player.stop()
+                player.clearMediaItems()
+                container.appScope.launch { container.link.leave() }
+                onBackground()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     fun flashInfo() {

@@ -69,12 +69,7 @@ fun AppRoot(container: AppContainer) {
         } else {
             container.startupSync()
             container.updates.checkOnLaunch()
-            val last = container.settings.lastWatched()
-            if (last != null && container.repository.channel(last.channelId) != null) {
-                listOf(Screen.Home, Screen.Player(last.channelId, last.category))
-            } else {
-                listOf(Screen.Home)
-            }
+            listOf(Screen.Home) // always open on the home screen (not the last channel)
         }
     }
 
@@ -150,6 +145,7 @@ fun AppRoot(container: AppContainer) {
                     container = container,
                     channelId = screen.channelId,
                     category = screen.category,
+                    onBackground = { stack = stack.filterNot { it is Screen.Player }.ifEmpty { listOf(Screen.Home) } },
                     onOpenGuide = { category ->
                         // Replace the player with the guide so Back from the guide doesn't loop.
                         val below = stack.getOrNull(stack.size - 2)
